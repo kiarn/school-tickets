@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# The web front end. Exposed behind the reverse proxy, with no lmnapi secret.
+[Unit]
+Description=School Tickets - web application
+After=network-online.target mariadb.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=school-tickets
+Group=school-tickets
+# Does NOT hold ST_LMNAPI_HOST_KEY. Verifiable with `ls -l`.
+EnvironmentFile=/etc/school-tickets/web.env
+ExecStart=/usr/share/school-tickets/venv/bin/gunicorn \
+          --bind 127.0.0.1:8000 --workers 3 school_tickets.wsgi:application
+Restart=always
+RestartSec=5s
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/school-tickets
+
+[Install]
+WantedBy=multi-user.target

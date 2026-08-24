@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block title %}{% translate "Tickets" %}{% endblock %}
+
+{% block content %}
+
+{% comment %} The status filter is the only navigation this screen has, so it stays put
+   while the list scrolls. `top-16` clears the sticky navbar above it. {% endcomment %}
+<nav class="tabs tabs-box sticky top-16 z-20 mb-3 bg-base-100 shadow-sm overflow-x-auto flex-nowrap"
+     aria-label="{% translate 'Filter by status' %}">
+    <a href="{% url 'tickets:list' %}"
+       class="tab whitespace-nowrap {% if not request.GET.status %}tab-active{% endif %}">
+        {% translate "All" %}
+    </a>
+    <a href="?status=open"
+       class="tab whitespace-nowrap {% if request.GET.status == 'open' %}tab-active{% endif %}">
+        {% translate "Open" %}
+    </a>
+    <a href="?status=in_progress"
+       class="tab whitespace-nowrap {% if request.GET.status == 'in_progress' %}tab-active{% endif %}">
+        {% translate "In progress" %}
+    </a>
+    <a href="?status=resolved"
+       class="tab whitespace-nowrap {% if request.GET.status == 'resolved' %}tab-active{% endif %}">
+        {% translate "Resolved" %}
+    </a>
+</nav>
+
+<ul class="flex flex-col gap-2 list-none p-0 m-0">
+    {% for ticket in tickets %}
+        <li>{% include "tickets/_ticket_card.html" %}</li>
+    {% empty %}
+        <li class="card bg-base-100 shadow-sm">
+            <div class="card-body items-center text-center py-10 gap-3">
+                <p class="text-base font-medium">{% translate "No visible ticket." %}</p>
+                <p class="text-sm opacity-60 max-w-xs">
+                    {% if request.GET.status %}
+                        {% translate "Nothing under this filter. Try “All”." %}
+                    {% else %}
+                        {% translate "Tickets you are allowed to read will appear here." %}
+                    {% endif %}
+                </p>
+                {% if not request.GET.status %}
+                    <a href="{% url 'tickets:create' %}" class="btn btn-primary btn-sm">
+                        {% translate "Report a fault" %}
+                    </a>
+                {% endif %}
+            </div>
+        </li>
+    {% endfor %}
+</ul>
+
+{% endblock %}
+
+{% comment %} Opening a ticket is the one thing done standing in front of the machine,
+   so it is the one control that never scrolls away. {% endcomment %}
+{% block bottom %}
+    <a href="{% url 'tickets:create' %}"
+       class="btn btn-primary btn-circle btn-lg shadow-lg fab"
+       aria-label="{% translate 'Report a fault' %}">
+        <span aria-hidden="true" class="text-2xl leading-none">+</span>
+    </a>
+{% endblock %}

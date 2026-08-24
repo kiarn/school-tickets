@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block title %}{% translate "Award a badge" %}{% endblock %}
+
+{% block content %}
+
+<a href="{% url 'badges:catalog' %}" class="btn btn-ghost btn-sm mb-2 -ms-2">
+    ← {% translate "Badges" %}
+</a>
+
+<h1 class="text-xl font-semibold mb-3 px-1">
+    {% if person %}
+        {% blocktranslate with who=person %}Award a badge to {{ who }}{% endblocktranslate %}
+    {% else %}
+        {% translate "Award a badge" %}
+    {% endif %}
+</h1>
+
+<form method="post" novalidate class="flex flex-col gap-3">
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+        <div class="alert alert-error py-2"><span>{{ form.non_field_errors|join:" " }}</span></div>
+    {% endif %}
+
+    <fieldset class="fieldset card bg-base-100 shadow-sm p-4">
+        <label class="label" for="{{ form.badge.id_for_label }}">{% translate "Badge" %}</label>
+        {{ form.badge }}
+
+        <label class="label mt-3" for="{{ form.user.id_for_label }}">{% translate "To" %}</label>
+        {{ form.user }}
+        {% for error in form.user.errors %}
+            <p class="text-error text-sm mt-1">{{ error }}</p>
+        {% endfor %}
+    </fieldset>
+
+    <fieldset class="fieldset card bg-base-100 shadow-sm p-4">
+        <legend class="fieldset-legend">{% translate "Why" %}</legend>
+        {{ form.motivation }}
+        {% comment %} The sentence is the badge. Without it the award is a sticker; with
+           it, it is something the pupil re-reads (D-24). {% endcomment %}
+        <p class="label text-xs opacity-70">
+            {% translate "They will read this on their profile. Write it for them, not for the record." %}
+        </p>
+
+        <label class="label mt-3" for="{{ form.ticket.id_for_label }}">
+            {% translate "The intervention" %}
+        </label>
+        {{ form.ticket }}
+        <p class="label text-xs opacity-70">
+            {% translate "Optional. Attaching it turns the badge into something anybody can go and look at." %}
+        </p>
+    </fieldset>
+
+    <button type="submit" class="btn btn-primary w-full">{% translate "Award" %}</button>
+</form>
+
+{% endblock %}

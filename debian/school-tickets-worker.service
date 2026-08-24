@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# The worker (D-20). No listening port. The ONLY process carrying the host key.
+[Unit]
+Description=School Tickets - synchronisation worker
+After=network-online.target mariadb.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=st-worker
+Group=st-worker
+# Holds ST_LMNAPI_HOST_KEY. This file is NOT readable by the web service:
+# that is D-09, enforced by file permissions rather than by code.
+EnvironmentFile=/etc/school-tickets/worker.env
+ExecStart=/usr/share/school-tickets/venv/bin/python /usr/share/school-tickets/manage.py run_worker
+Restart=always
+RestartSec=10s
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/school-tickets
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,125 @@
+{% load i18n static %}<!DOCTYPE html>
+{% comment %} The theme comes from the account when there is one, and is then settled
+   before the first byte of CSS -- no flash, and nothing for the script below
+   to decide. An empty preference means "follow the device", which is what the
+   script handles. {% endcomment %}
+<html lang="{{ LANGUAGE_CODE }}" data-theme="{% firstof user.theme "light" %}"
+      {% if user.theme %}data-theme-source="account"{% endif %}>
+<head>
+<meta charset="utf-8">
+{% comment %} viewport-fit=cover is what makes env(safe-area-inset-*) non-zero. Without it
+   the padding under the bottom bar silently evaluates to 0 on a notched phone,
+   and the bar sits under the home indicator. {% endcomment %}
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>{% block title %}{% translate "Tickets" %}{% endblock %} · school-tickets</title>
+<link rel="stylesheet" href="{% static 'app.css' %}">
+{% comment %} Set the theme before first paint. daisyUI's dark theme keys off
+   [data-theme="dark"] only -- it ships no prefers-color-scheme rule -- so
+   something has to make the choice. Doing it in <head>, synchronously, is what
+   avoids a white flash on a dark phone. {% endcomment %}
+<script>
+(function () {
+    var root = document.documentElement;
+    // An explicit account preference has already been applied server-side.
+    if (root.dataset.themeSource === "account") { return; }
+    try {
+        var saved = localStorage.getItem("theme");
+        var dark = saved ? saved === "dark"
+                         : matchMedia("(prefers-color-scheme: dark)").matches;
+        root.dataset.theme = dark ? "dark" : "light";
+    } catch (e) { /* private mode: the light default already applies */ }
+})();
+</script>
+</head>
+
+<body class="bg-base-200 text-base-content flex flex-col">
+
+<header class="navbar bg-base-100 sticky top-0 z-30 shadow-sm px-3 gap-2">
+    <div class="flex-1 min-w-0">
+        <a href="{% url 'tickets:list' %}" class="btn btn-ghost px-2 text-lg font-semibold">
+            school-tickets
+        </a>
+    </div>
+    {% if user.is_authenticated %}
+        {% comment %} The badge is the whole point of the in-app list: it is what makes a
+           missed, muted or held-back Push recoverable (doc 09 §5). {% endcomment %}
+        <a href="{% url 'notifications:list' %}"
+           class="btn btn-ghost btn-circle"
+           aria-label="{% translate 'Notifications' %}">
+            <span class="indicator">
+                {% if unread_count %}
+                    <span class="indicator-item badge badge-primary badge-xs">
+                        {{ unread_count }}
+                    </span>
+                {% endif %}
+                <span aria-hidden="true" class="text-lg leading-none">🔔</span>
+            </span>
+        </a>
+        <div class="dropdown dropdown-end">
+            <div tabindex="0" role="button" class="btn btn-ghost btn-circle avatar avatar-placeholder">
+                <div class="bg-neutral text-neutral-content w-9 rounded-full grid place-items-center">
+                    <span class="text-sm">{{ user.display_name|slice:":2"|upper|default:"?" }}</span>
+                </div>
+            </div>
+            <ul tabindex="0"
+                class="dropdown-content menu bg-base-100 rounded-box z-40 mt-2 w-56 p-2 shadow">
+                <li class="menu-title truncate">{{ user.display_name|default:user.cn }}</li>
+                <li><a href="{% url 'accounts:profile' %}">{% translate "My profile" %}</a></li>
+                <li><a href="{% url 'badges:catalog' %}">{% translate "Badges" %}</a></li>
+                {% comment %} The two forms live outside the list, and the buttons reach
+                   them through form="...". A <form> inside a <ul> is invalid,
+                   and a menu item that is a form rather than a button loses
+                   daisyUI's own styling. {% endcomment %}
+                <li>
+                    <button type="submit" form="theme-form">
+                        {% if user.theme == "dark" %}
+                            {% translate "Light theme" %}
+                        {% else %}
+                            {% translate "Dark theme" %}
+                        {% endif %}
+                    </button>
+                </li>
+                <li><button type="submit" form="logout-form">{% translate "Sign out" %}</button></li>
+            </ul>
+        </div>
+    {% endif %}
+</header>
+
+{% if user.is_authenticated %}
+    {% comment %} Stored on the account, not in this browser: somebody who needs a dark
+       screen needs it on every device they pick up. The profile carries the
+       third option, "follow my device"; this one only flips. {% endcomment %}
+    <form method="post" action="{% url 'accounts:theme' %}" id="theme-form" hidden>
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <input type="hidden" name="theme"
+               value="{% if user.theme == 'dark' %}light{% else %}dark{% endif %}">
+    </form>
+    <form method="post" action="{% url 'accounts:logout' %}" id="logout-form" hidden>
+        {% csrf_token %}
+    </form>
+{% endif %}
+
+{% if messages %}
+    <div class="px-3 pt-3 space-y-2">
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags|default:'info' }} py-2">
+                <span>{{ message }}</span>
+            </div>
+        {% endfor %}
+    </div>
+{% endif %}
+
+{% comment %} pb-24 leaves room for a bottom bar on the screens that have one; the safe
+   area itself is handled in app.css. {% endcomment %}
+<main class="flex-1 w-full max-w-3xl mx-auto px-3 py-3 pb-24">
+    {% block content %}{% endblock %}
+</main>
+
+{% block bottom %}{% endblock %}
+
+<script src="{% static 'vendor/htmx.min.js' %}" defer></script>
+<script src="{% static 'vendor/alpine.min.js' %}" defer></script>
+</body>
+</html>

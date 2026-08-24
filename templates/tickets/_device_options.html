@@ -1,0 +1,7 @@
+{% load i18n %}
+{% comment %} The machine list for one room (D-17). Options only: htmx swaps this into
+   the existing <select>, so no wrapper element may appear here. {% endcomment %}
+<option value="">{% translate "No particular machine" %}</option>
+{% for device in devices %}
+    <option value="{{ device.pk }}">{{ device.hostname }}</option>
+{% endfor %}

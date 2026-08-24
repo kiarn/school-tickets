@@ -1,0 +1,81 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""The worker's three jobs and their windows. See D-20."""
+
+import logging
+from dataclasses import dataclass, field
+from typing import Callable
+
+from django.conf import settings
+from django.utils import timezone
+
+logger = logging.getLogger(__name__)
+
+
+def is_open_hours() -> bool:
+    """Workstations do not sync while the school is closed.
+
+    ``localtime`` and not ``datetime.now``: otherwise the window drifts by an
+    hour between winter and summer.
+    """
+    now = timezone.localtime()
+    start, end = settings.ST_OPENING_HOURS
+    return now.weekday() in settings.ST_OPENING_WEEKDAYS and start <= now.hour < end
+
+
+def is_out_of_hours() -> bool:
+    return not is_open_hours()
+
+
+def is_notify_hours() -> bool:
+    """When a notification may reach a phone -- not when machines are on.
+
+    Deliberately a second window rather than a reuse of the first: the two
+    answer different questions, and merging them would silence the evening
+    instructions doc 00 describes. See specs/09-notifications.md §6.
+    """
+    now = timezone.localtime()
+    start, end = settings.ST_NOTIFY_HOURS
+    return now.weekday() in settings.ST_NOTIFY_WEEKDAYS and start <= now.hour < end
+
+
+@dataclass
+class Job:
+    name: str
+    every: int
+    fn: Callable[[], dict]
+    window: Callable[[], bool] = lambda: True
+    next_run: float = 0.0
+    backoff: float = 0.0
+    failures: int = 0
+    last_result: dict = field(default_factory=dict)
+
+    def due(self, now: float) -> bool:
+        return now >= self.next_run and self.window()
+
+
+def build_jobs(only: str | None = None) -> list[Job]:
+    from parc import tasks
+
+    from notifications import delivery
+
+    jobs = [
+        Job("refresh", settings.ST_WORKER_REFRESH_EVERY, tasks.drain_refresh_queue),
+        Job(
+            "notify",
+            settings.ST_WORKER_NOTIFY_EVERY,
+            delivery.deliver_pending,
+            window=is_notify_hours,
+        ),
+        Job("linbo", settings.ST_WORKER_LINBO_EVERY, tasks.sweep_linbo, window=is_open_hours),
+        Job(
+            "inventory",
+            settings.ST_WORKER_INVENTORY_EVERY,
+            tasks.sync_inventory,
+            window=is_out_of_hours,
+        ),
+    ]
+    if only:
+        jobs = [j for j in jobs if j.name == only]
+        if not jobs:
+            raise ValueError(f"unknown job: {only}")
+    return jobs

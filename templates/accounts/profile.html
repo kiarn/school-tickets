@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block title %}{{ person }}{% endblock %}
+
+{% block content %}
+
+<a href="{% url 'tickets:list' %}" class="btn btn-ghost btn-sm mb-2 -ms-2">
+    ← {% translate "Tickets" %}
+</a>
+
+<section class="card bg-base-100 shadow-sm mb-3">
+    <div class="card-body items-center text-center gap-2">
+        <div class="avatar avatar-placeholder">
+            <div class="bg-neutral text-neutral-content w-16 rounded-full grid place-items-center">
+                <span class="text-xl">{{ person.display_name|slice:":2"|upper|default:"?" }}</span>
+            </div>
+        </div>
+        <h1 class="text-xl font-semibold break-words">{{ person }}</h1>
+        <div class="flex flex-wrap justify-center gap-1.5">
+            <span class="badge badge-outline">{{ person.get_role_display }}</span>
+            {% if not person.is_active %}
+                <span class="badge badge-ghost">{% translate "No longer enrolled" %}</span>
+            {% endif %}
+        </div>
+        {% if person.cn %}
+            <p class="text-xs opacity-60 font-mono">{{ person.cn }}</p>
+        {% endif %}
+    </div>
+</section>
+
+{% comment %} The badges. This is the only screen that says who holds what: the
+   catalogue never does, because listing holders under a badge is a ranking as
+   soon as you count them (D-24). {% endcomment %}
+<section class="card bg-base-100 shadow-sm mb-3">
+    <div class="card-body gap-3">
+        <h2 class="text-sm font-semibold opacity-70">{% translate "Badges" %}</h2>
+
+        {% for award in awards %}
+            <div class="flex items-start gap-3 rounded-box border border-base-300 p-3">
+                <span class="text-2xl leading-none shrink-0"
+                      aria-hidden="true">{{ award.badge.icon|default:"★" }}</span>
+                <div class="min-w-0 flex flex-col gap-1">
+                    <span class="font-medium break-words">{{ award.badge.label }}</span>
+                    {% if award.badge.summary %}
+                        <span class="text-xs opacity-70 break-words">{{ award.badge.summary }}</span>
+                    {% endif %}
+                    {% comment %} The sentence the pupil will re-read. It is the point of the
+                       whole feature, so it is not tucked away. {% endcomment %}
+                    {% if award.motivation %}
+                        <p class="text-sm break-words">{{ award.motivation }}</p>
+                    {% endif %}
+                    <span class="text-xs opacity-60">
+                        {{ award.awarded_at|date:"SHORT_DATE_FORMAT" }}
+                        {% if award.ticket %}
+                            ·
+                            <a class="link" href="{% url 'tickets:detail' award.ticket_id %}">
+                                {% translate "the intervention" %}
+                            </a>
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
+        {% empty %}
+            <p class="text-sm opacity-60">
+                {% if editable %}
+                    {% translate "No badge yet. They are awarded by a teacher, one repair at a time." %}
+                {% else %}
+                    {% translate "No badge yet." %}
+                {% endif %}
+            </p>
+        {% endfor %}
+
+        {% comment %} The way in to awarding: an admin reaches it from the person, having
+           just read what they did -- not from a list of names (D-24). {% endcomment %}
+        {% if not editable and user.is_admin %}
+            <a href="{% url 'badges:award_to' person.pk %}" class="btn btn-outline btn-sm">
+                {% translate "Award a badge" %}
+            </a>
+        {% endif %}
+    </div>
+</section>
+
+{% if editable %}
+    <form method="post" class="card bg-base-100 shadow-sm">
+        {% csrf_token %}
+        <div class="card-body gap-2">
+            <h2 class="text-sm font-semibold opacity-70">{% translate "Display" %}</h2>
+
+            <label class="label" for="{{ form.language.id_for_label }}">
+                {% translate "Display language" %}
+            </label>
+            {{ form.language }}
+
+            <label class="label mt-2" for="{{ form.theme.id_for_label }}">
+                {% translate "Theme" %}
+            </label>
+            {{ form.theme }}
+
+            <p class="text-xs opacity-70 mt-1">
+                {% translate "Both are kept with your account, so they follow you to another phone." %}
+            </p>
+            <h2 class="text-sm font-semibold opacity-70 mt-4">
+                {% translate "Notifications on my devices" %}
+            </h2>
+            {% comment %} Worded as "send me", never as "mute": a checkbox whose ticked
+               state means silence is a checkbox people get wrong. {% endcomment %}
+            <div class="flex flex-col gap-1">
+                {% for field in mutes %}
+                    <label class="label cursor-pointer justify-start gap-3">
+                        {{ field }}
+                        <span>{{ field.label }}</span>
+                    </label>
+                {% endfor %}
+            </div>
+            <p class="text-xs opacity-70">
+                {% translate "Unticking one stops the push, not the notification: it still appears in your list." %}
+            </p>
+
+            <button type="submit" class="btn btn-primary btn-sm mt-1">{% translate "Save" %}</button>
+        </div>
+    </form>
+{% endif %}
+
+{% endblock %}

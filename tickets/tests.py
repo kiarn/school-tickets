@@ -1,0 +1,718 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Visibility is the rule we cannot afford to break.
+
+These tests beat a careful re-read: the project's query count will only grow,
+and every new view is a chance to forget ``visible_to()``.
+"""
+
+import io
+import shutil
+import tempfile
+from pathlib import Path
+
+from django.core.exceptions import ValidationError
+from django.core.files.uploadedfile import SimpleUploadedFile
+from PIL import Image
+from django.test import TestCase, override_settings
+from django.urls import reverse
+
+from accounts.authz import (
+    VISIBILITY_HELP,
+    Role,
+    Visibility,
+    can_restrict_to,
+    can_widen,
+)
+from accounts.models import AuditLog, School, User
+from parc.models import Device, Room
+from tickets import attachments
+from tickets.models import Attachment, Comment, Ticket, TicketAssignee
+
+
+class VisibilityTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.school = School.objects.create(slug="lycee", name="Lycee")
+        cls.other_school = School.objects.create(slug="other", name="Other")
+        cls.room = Room.objects.create(school=cls.school, name="204")
+
+        def person(cn, role, school=None):
+            return User.objects.enroll(school=school or cls.school, cn=cn, role=role)
+
+        cls.admin = person("admin", Role.ADMIN)
+        cls.member = person("pupil", Role.MEMBER)
+        cls.reporter = person("teacher", Role.REPORTER)
+        cls.other_member = person("pupil2", Role.MEMBER)
+        cls.outsider = person("elsewhere", Role.ADMIN, school=cls.other_school)
+
+        def ticket(visibility, author=None):
+            return Ticket.objects.create(
+                school=cls.school,
+                room=cls.room,
+                room_label="204",
+                title=f"t{visibility}",
+                visibility=visibility,
+                created_by=author or cls.admin,
+            )
+
+        cls.t_admins = ticket(Visibility.ADMINS)
+        cls.t_team = ticket(Visibility.TEAM)
+        cls.t_all = ticket(Visibility.ALL)
+
+    def visible(self, user):
+        return set(Ticket.objects.visible_to(user).values_list("title", flat=True))
+
+    def test_reporter_only_sees_everyone_enrolled_level(self):
+        self.assertEqual(self.visible(self.reporter), {"t30"})
+
+    def test_member_sees_team_and_above(self):
+        self.assertEqual(self.visible(self.member), {"t20", "t30"})
+
+    def test_admin_sees_everything(self):
+        self.assertEqual(self.visible(self.admin), {"t10", "t20", "t30"})
+
+    def test_author_keeps_their_own_ticket(self):
+        """Without this clause a cautious default would blind a reporting teacher."""
+        mine = Ticket.objects.create(
+            school=self.school,
+            room=self.room,
+            room_label="204",
+            title="mine",
+            visibility=Visibility.ADMINS,
+            created_by=self.reporter,
+        )
+        self.assertIn(mine.title, self.visible(self.reporter))
+
+    def test_assigning_grants_access(self):
+        TicketAssignee.objects.create(
+            ticket=self.t_admins, user=self.member, assigned_by=self.admin
+        )
+        self.assertIn("t10", self.visible(self.member))
+
+    def test_no_duplicate_rows_with_several_assignees(self):
+        for user in (self.member, self.other_member):
+            TicketAssignee.objects.create(ticket=self.t_all, user=user, assigned_by=self.admin)
+        titles = list(Ticket.objects.visible_to(self.member).values_list("title", flat=True))
+        self.assertEqual(len(titles), len(set(titles)))
+
+    def test_anonymous_and_deactivated_see_nothing(self):
+        from django.contrib.auth.models import AnonymousUser
+
+        self.assertEqual(self.visible(AnonymousUser()), set())
+        self.member.is_active = False
+        self.assertEqual(self.visible(self.member), set())
+
+    def test_schools_are_partitioned(self):
+        """A global admin of another school sees nothing here (D-06)."""
+        self.assertEqual(self.visible(self.outsider), set())
+
+    def test_anonymising_cuts_access(self):
+        self.member.anonymize()
+        self.assertEqual(self.visible(self.member), set())
+
+
+class ViewTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.school = School.objects.create(slug="lycee", name="Lycee")
+        cls.room = Room.objects.create(school=cls.school, name="204")
+        cls.reporter = User.objects.enroll(school=cls.school, cn="teacher", role=Role.REPORTER)
+        cls.reporter.oidc_sub = "sub-teacher"
+        cls.reporter.save()
+        cls.admin = User.objects.enroll(school=cls.school, cn="admin", role=Role.ADMIN)
+        cls.hidden = Ticket.objects.create(
+            school=cls.school,
+            room=cls.room,
+            room_label="204",
+            title="classified",
+            visibility=Visibility.ADMINS,
+            created_by=cls.admin,
+        )
+
+    def setUp(self):
+        self.client.force_login(self.reporter)
+
+    def test_404_and_never_403(self):
+        """A 403 on a sequential identifier would reveal existence."""
+        response = self.client.get(reverse("tickets:detail", args=[self.hidden.pk]))
+        self.assertEqual(response.status_code, 404)
+
+    def test_attachment_revalidates_its_parent_ticket(self):
+        item = Attachment.objects.create(
+            ticket=self.hidden,
+            uploaded_by=self.admin,
+            filename="photo.jpg",
+            mime="image/jpeg",
+            size_bytes=1,
+            storage_path="photo.jpg",
+        )
+        response = self.client.get(reverse("tickets:attachment", args=[item.pk]))
+        self.assertEqual(response.status_code, 404)
+
+    def test_list_does_not_show_the_invisible(self):
+        response = self.client.get(reverse("tickets:list"))
+        self.assertNotContains(response, "classified")
+
+
+class AsymmetryTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.school = School.objects.create(slug="lycee", name="Lycee")
+        cls.member = User.objects.enroll(school=cls.school, cn="pupil", role=Role.MEMBER)
+        cls.admin = User.objects.enroll(school=cls.school, cn="admin", role=Role.ADMIN)
+
+    def test_widening_is_reserved_to_admins(self):
+        self.assertFalse(can_widen(self.member))
+        self.assertTrue(can_widen(self.admin))
+
+    def test_restricting_never_below_ones_own_level(self):
+        self.assertTrue(can_restrict_to(self.member, Visibility.TEAM))
+        self.assertFalse(can_restrict_to(self.member, Visibility.ADMINS))
+        self.assertTrue(can_restrict_to(self.admin, Visibility.ADMINS))
+
+
+class EnrolmentTests(TestCase):
+    def setUp(self):
+        self.school = School.objects.create(slug="lycee", name="Lycee")
+
+    def test_enrolled_without_sub_then_bound(self):
+        user = User.objects.enroll(school=self.school, cn="arnaud", role=Role.ADMIN)
+        self.assertIsNone(user.oidc_sub)
+        user.bind_oidc_sub("sub-123")
+        self.assertEqual(User.objects.get(pk=user.pk).oidc_sub, "sub-123")
+
+    def test_a_bound_sub_never_reattaches_to_somebody_else(self):
+        """A reassigned cn must not inherit a former member's history."""
+        user = User.objects.enroll(school=self.school, cn="arnaud")
+        user.bind_oidc_sub("sub-123")
+        with self.assertRaises(ValueError):
+            user.bind_oidc_sub("sub-456")
+
+    def test_anonymising_unenrols(self):
+        user = User.objects.enroll(school=self.school, cn="pupil")
+        user.bind_oidc_sub("sub-789")
+        user.anonymize()
+        user.refresh_from_db()
+        self.assertIsNone(user.oidc_sub)
+        self.assertFalse(user.is_active)
+        self.assertEqual(user.cn, "")
+        self.assertIsNotNone(user.anonymized_at)
+
+
+class ScreenTests(TestCase):
+    """The templates must actually render, with content in them.
+
+    The visibility tests above only reach ``detail.html`` through its 404 path,
+    so a broken tag in that template would sail through the whole suite. These
+    two render the real thing, with a comment, an attachment and a device
+    attached -- the branches a bare ticket never exercises.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.school = School.objects.create(slug="lycee", name="Lycee")
+        cls.room = Room.objects.create(school=cls.school, name="204")
+        cls.device = Device.objects.create(
+            school=cls.school, room=cls.room, mac="48:5B:39:0B:2E:C2",
+            hostname="dienst05", pxe=1,
+        )
+        cls.user = User.objects.enroll(
+            school=cls.school, cn="pupil", role=Role.MEMBER, display_name="Lea"
+        )
+        cls.ticket = Ticket.objects.create(
+            school=cls.school, room=cls.room, device=cls.device, room_label="204",
+            title="Black screen", description="Nothing on boot.",
+            status=Ticket.Status.OPEN, priority=Ticket.Priority.HIGH,
+            visibility=Visibility.TEAM, created_by=cls.user,
+        )
+        Comment.objects.create(ticket=cls.ticket, author=cls.user, body="Cable swapped.")
+        Attachment.objects.create(
+            ticket=cls.ticket, uploaded_by=cls.user, filename="photo.jpg",
+            mime="image/jpeg", size_bytes=1, storage_path="photo.jpg",
+        )
+
+    def setUp(self):
+        self.client.force_login(self.user)
+
+    def test_list_renders(self):
+        response = self.client.get(reverse("tickets:list"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Black screen")
+        self.assertContains(response, "204")
+
+    def test_detail_renders_its_thread_and_photos(self):
+        response = self.client.get(reverse("tickets:detail", args=[self.ticket.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Cable swapped.")
+        self.assertContains(response, "dienst05")
+        # Photos go through the view, never through MEDIA_URL (D-21).
+        self.assertContains(response, reverse("tickets:attachment", args=[
+            self.ticket.attachments.get().pk
+        ]))
+
+    def test_the_reader_is_told_who_else_can_see_this(self):
+        """Visibility is never implicit on screen (doc 08)."""
+        response = self.client.get(reverse("tickets:detail", args=[self.ticket.pk]))
+        self.assertContains(response, "Visibility")
+        self.assertContains(response, str(Visibility.TEAM.label))
+
+
+class JpegMetadataTests(TestCase):
+    """The stripping of EXIF is worth testing on bytes we built ourselves.
+
+    A photo taken in a classroom carries the coordinates of that classroom, and
+    a marker walk that gets one length wrong produces a file no browser opens.
+    """
+
+    @staticmethod
+    def exif_block(*, orientation=None, gps=True) -> bytes:
+        """A TIFF block with the two tags that matter to us, and nothing else.
+
+        0x0112 is the orientation, the one tag worth carrying over. 0x8825 is
+        the GPS IFD pointer -- the reason any of this code exists. The pointer
+        is made to land on a real (empty) IFD appended after the block, so that
+        the fixture is a file Pillow reads without complaint rather than one it
+        merely tolerates.
+        """
+        count = (orientation is not None) + bool(gps)
+        # header 8 + entry count 2 + entries + "no next IFD" 4
+        gps_offset = 14 + 12 * count
+        entries = b""
+        if orientation is not None:
+            entries += (
+                b"\x01\x12\x00\x03\x00\x00\x00\x01"
+                + orientation.to_bytes(2, "big") + b"\x00\x00"
+            )
+        if gps:
+            entries += (
+                b"\x88\x25\x00\x04\x00\x00\x00\x01" + gps_offset.to_bytes(4, "big")
+            )
+        block = (
+            b"MM\x00\x2a\x00\x00\x00\x08"
+            + count.to_bytes(2, "big") + entries + b"\x00\x00\x00\x00"
+        )
+        return block + (b"\x00\x00" + b"\x00\x00\x00\x00" if gps else b"")
+
+    @staticmethod
+    def photo(*, orientation=None, gps=True, size=(64, 48)) -> bytes:
+        """A real JPEG, the kind that reaches ``scrub``.
+
+        The hand-built one below is enough to exercise the marker walk, but it
+        holds no decodable image: Pillow refuses it, and rightly so.
+        """
+        image = Image.new("RGB", size)
+        image.putpixel((0, 0), (255, 0, 0))
+        buffer = io.BytesIO()
+        # Pillow wants the whole APP1 payload, prefix included: hand it the
+        # bare TIFF block and it writes no EXIF at all, in silence.
+        image.save(
+            buffer, "JPEG",
+            exif=b"Exif\x00\x00" + JpegMetadataTests.exif_block(
+                orientation=orientation, gps=gps
+            ),
+        )
+        return buffer.getvalue()
+
+    @staticmethod
+    def jpeg(*, orientation=None, gps=True):
+        """A minimal but structurally valid JPEG: APP0, an APP1 EXIF, a scan."""
+        parts = [b"\xff\xd8"]
+        jfif = b"JFIF\x00\x01\x02\x00\x00\x01\x00\x01\x00\x00"
+        parts.append(b"\xff\xe0" + (len(jfif) + 2).to_bytes(2, "big") + jfif)
+
+        exif = b"Exif\x00\x00" + JpegMetadataTests.exif_block(
+            orientation=orientation, gps=gps
+        )
+        parts.append(b"\xff\xe1" + (len(exif) + 2).to_bytes(2, "big") + exif)
+        parts.append(b"\xff\xda\x00\x08\x01\x01\x00\x00\x3f\x00" + b"payload" + b"\xff\xd9")
+        return b"".join(parts)
+
+    def test_gps_is_gone(self):
+        out = attachments.strip_jpeg_metadata(self.jpeg())
+        self.assertNotIn(b"Exif\x00\x00", out)
+        self.assertNotIn(b"\x88\x25", out)
+
+    def test_the_picture_itself_survives(self):
+        out = attachments.strip_jpeg_metadata(self.jpeg())
+        self.assertTrue(out.startswith(b"\xff\xd8"))
+        self.assertIn(b"JFIF", out)          # APP0 is about pixels, it stays
+        self.assertIn(b"payload", out)       # so does the scan
+        self.assertTrue(out.endswith(b"\xff\xd9"))
+
+    def test_orientation_is_carried_over(self):
+        """Stripping EXIF wholesale would lay every portrait photo on its side."""
+        out = attachments.strip_jpeg_metadata(self.jpeg(orientation=6))
+        self.assertEqual(attachments.orientation_of_jpeg(out), 6)
+        self.assertNotIn(b"\x88\x25", out)   # ...without carrying the GPS along
+
+    def test_an_upright_photo_gains_no_exif_at_all(self):
+        out = attachments.strip_jpeg_metadata(self.jpeg(orientation=1))
+        self.assertNotIn(b"Exif", out)
+
+    def test_a_broken_file_is_returned_untouched(self):
+        """Refusing it would leave a pupil unable to file what they photographed."""
+        broken = b"\xff\xd8\xff\xe1\xff\xff nonsense"
+        self.assertEqual(attachments.strip_jpeg_metadata(broken), broken)
+
+    def test_a_real_photo_loses_its_gps_and_keeps_its_size(self):
+        out, mime, width, height = attachments.scrub(self.photo(), "image/jpeg")
+        self.assertEqual(mime, "image/jpeg")
+        self.assertEqual((width, height), (64, 48))
+        self.assertNotIn(b"\x88\x25", out)      # the GPS pointer
+        self.assertLess(len(out), len(self.photo()))
+
+    def test_an_oversized_photo_is_brought_down(self):
+        """Doc 06 names photos as the one volume that grows without bound."""
+        big = self.photo(size=(attachments.MAX_DIMENSION + 800, 1000))
+        out, _mime, width, height = attachments.scrub(big, "image/jpeg")
+        self.assertEqual(max(width, height), attachments.MAX_DIMENSION)
+        self.assertNotIn(b"Exif", out)
+        self.assertLess(len(out), len(big))
+
+    def test_a_portrait_photo_stays_upright(self):
+        """Stripping EXIF removes the tag browsers rotate by. Whichever path
+        runs, the picture must still come out the way it was taken."""
+        upright, _m, width, height = attachments.scrub(
+            self.photo(orientation=6, size=(64, 48)), "image/jpeg"
+        )
+        # Not resized: the tag is kept rather than the pixels rewritten, which
+        # costs no re-compression -- but the recorded size is what is shown.
+        self.assertEqual((width, height), (48, 64))
+        self.assertEqual(attachments.orientation_of_jpeg(upright), 6)
+
+        resized, _m, width, height = attachments.scrub(
+            self.photo(orientation=6, size=(3000, 2000)), "image/jpeg"
+        )
+        # Resized: the rotation is baked into the pixels, so no tag is needed
+        # and none is left.
+        self.assertEqual(width, 2 * height // 3)
+        self.assertEqual(attachments.orientation_of_jpeg(resized), 1)
+
+    def test_a_file_we_cannot_decode_is_refused_not_stored(self):
+        """The point of taking the Pillow dependency (R-18) was to be able to
+        promise that what we keep has been scrubbed."""
+        with self.assertRaises(ValidationError):
+            attachments.scrub(self.jpeg(), "image/jpeg")
+
+    def test_the_type_is_read_from_the_bytes(self):
+        self.assertEqual(attachments.sniff(self.jpeg())[0], "image/jpeg")
+        self.assertEqual(attachments.sniff(self.photo())[0], "image/jpeg")
+        self.assertEqual(attachments.sniff(b"\x89PNG\r\n\x1a\n...")[0], "image/png")
+        self.assertEqual(attachments.sniff(b"RIFF????WEBPVP8 ")[0], "image/webp")
+        self.assertIsNone(attachments.sniff(b"#!/bin/sh\nrm -rf /"))
+        # Nothing out of a camera is a GIF, and an animated format would have
+        # to be flattened by the resize below for no benefit.
+        self.assertIsNone(attachments.sniff(b"GIF89a" + b"\x00" * 16))
+
+
+class WriteTests(TestCase):
+    """Reading a ticket is not writing to it, and the tests say which is which."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.school = School.objects.create(slug="lycee", name="Lycee")
+        cls.room = Room.objects.create(school=cls.school, name="204")
+        cls.other_room = Room.objects.create(school=cls.school, name="205")
+        cls.device = Device.objects.create(
+            school=cls.school, room=cls.room, mac="48:5b:39:0b:2e:c2", hostname="r204-01"
+        )
+        cls.foreign_device = Device.objects.create(
+            school=cls.school, room=cls.other_room, mac="48:5b:39:0b:2e:c3", hostname="r205-01"
+        )
+
+        def person(cn, role):
+            return User.objects.enroll(school=cls.school, cn=cn, role=role, display_name=cn)
+
+        cls.admin = person("admin", Role.ADMIN)
+        cls.member = person("pupil", Role.MEMBER)
+        cls.other_member = person("pupil2", Role.MEMBER)
+        cls.reporter = person("teacher", Role.REPORTER)
+
+    def setUp(self):
+        self.media = tempfile.mkdtemp()
+        override = override_settings(MEDIA_ROOT=self.media)
+        override.enable()
+        self.addCleanup(override.disable)
+        self.addCleanup(shutil.rmtree, self.media, True)
+
+    def open_ticket(self, **kwargs):
+        fields = {
+            "school": self.school, "room": self.room, "room_label": "204",
+            "title": "Black screen", "visibility": Visibility.TEAM,
+            "created_by": self.member,
+        }
+        return Ticket.objects.create(**{**fields, **kwargs})
+
+    def post(self, name, ticket, data=None):
+        return self.client.post(reverse(name, args=[ticket.pk]), data or {})
+
+    # --- opening ------------------------------------------------------------
+
+    def test_a_reporter_may_open_a_ticket(self):
+        """D-07: anyone with access may report. The overflow is a teaching matter."""
+        self.client.force_login(self.reporter)
+        response = self.client.post(reverse("tickets:create"), {
+            "room": self.room.pk, "title": "No sound", "description": "",
+            "priority": "normal", "visibility": Visibility.TEAM,
+        })
+        ticket = Ticket.objects.get(title="No sound")
+        self.assertRedirects(response, reverse("tickets:detail", args=[ticket.pk]))
+        self.assertEqual(ticket.created_by, self.reporter)
+        self.assertEqual(ticket.school, self.school)
+
+    def test_the_room_label_is_frozen_at_creation(self):
+        self.client.force_login(self.member)
+        self.client.post(reverse("tickets:create"), {
+            "room": self.room.pk, "title": "Frozen", "priority": "normal",
+            "visibility": Visibility.TEAM,
+        })
+        self.room.name = "A204"
+        self.room.save()
+        self.assertEqual(Ticket.objects.get(title="Frozen").room_label, "204")
+
+    def test_a_machine_from_another_room_is_refused(self):
+        self.client.force_login(self.member)
+        response = self.client.post(reverse("tickets:create"), {
+            "room": self.room.pk, "device": self.foreign_device.pk, "title": "Mismatch",
+            "priority": "normal", "visibility": Visibility.TEAM,
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Ticket.objects.filter(title="Mismatch").exists())
+
+    def test_a_reporter_may_open_an_admins_only_ticket(self):
+        """The author clause keeps it visible to them, so restricting is safe."""
+        self.client.force_login(self.reporter)
+        self.client.post(reverse("tickets:create"), {
+            "room": self.room.pk, "title": "Names a pupil", "priority": "normal",
+            "visibility": Visibility.ADMINS,
+        })
+        ticket = Ticket.objects.get(title="Names a pupil")
+        self.assertEqual(ticket.visibility, Visibility.ADMINS)
+        self.assertIn(ticket, Ticket.objects.visible_to(self.reporter))
+        self.assertNotIn(ticket, Ticket.objects.visible_to(self.member))
+
+    def test_a_photo_is_stored_scrubbed_and_never_under_its_own_name(self):
+        self.client.force_login(self.member)
+        photo = SimpleUploadedFile(
+            "../../evil.jpg", JpegMetadataTests.photo(), content_type="image/jpeg"
+        )
+        self.client.post(reverse("tickets:create"), {
+            "room": self.room.pk, "title": "With a photo", "priority": "normal",
+            "visibility": Visibility.TEAM, "photos": photo,
+        })
+        item = Ticket.objects.get(title="With a photo").attachments.get()
+        self.assertEqual(item.mime, "image/jpeg")
+        self.assertNotIn("..", item.storage_path)
+        self.assertTrue((Path(self.media) / item.storage_path).is_file())
+        self.assertNotIn(b"Exif", (Path(self.media) / item.storage_path).read_bytes())
+
+    def test_a_file_that_is_not_an_image_is_refused(self):
+        self.client.force_login(self.member)
+        response = self.client.post(reverse("tickets:create"), {
+            "room": self.room.pk, "title": "Not a photo", "priority": "normal",
+            "visibility": Visibility.TEAM,
+            "photos": SimpleUploadedFile("x.jpg", b"#!/bin/sh\n", content_type="image/jpeg"),
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Ticket.objects.filter(title="Not a photo").exists())
+
+    # --- commenting ---------------------------------------------------------
+
+    def test_an_unreadable_ticket_takes_no_comment(self):
+        hidden = self.open_ticket(visibility=Visibility.ADMINS, created_by=self.admin)
+        self.client.force_login(self.reporter)
+        self.assertEqual(self.post("tickets:comment", hidden, {"body": "hello"}).status_code, 404)
+        self.assertEqual(hidden.comments.count(), 0)
+
+    def test_an_empty_note_is_refused(self):
+        ticket = self.open_ticket()
+        self.client.force_login(self.member)
+        self.post("tickets:comment", ticket, {"body": "   "})
+        self.assertEqual(ticket.comments.count(), 0)
+
+    def test_a_note_carries_its_photos(self):
+        ticket = self.open_ticket()
+        self.client.force_login(self.member)
+        self.post("tickets:comment", ticket, {
+            "body": "Swapped the cable.",
+            "photos": SimpleUploadedFile(
+                "p.jpg", JpegMetadataTests.photo(), content_type="image/jpeg"
+            ),
+        })
+        comment = ticket.comments.get()
+        self.assertEqual(comment.attachments.count(), 1)
+        self.assertEqual(ticket.attachments.count(), 1)
+
+    # --- status -------------------------------------------------------------
+
+    def test_a_pupil_closes_their_own_repair(self):
+        """The pedagogical point of the project, in one assertion (doc 00)."""
+        ticket = self.open_ticket()
+        self.client.force_login(self.member)
+        self.post("tickets:status", ticket, {"status": "resolved"})
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.status, Ticket.Status.RESOLVED)
+        self.assertEqual(ticket.resolved_by, self.member)
+        self.assertIsNotNone(ticket.resolved_at)
+
+    def test_a_reporter_may_not_resolve_somebody_elses_repair(self):
+        ticket = self.open_ticket(visibility=Visibility.ALL)
+        self.client.force_login(self.reporter)
+        self.assertEqual(
+            self.post("tickets:status", ticket, {"status": "resolved"}).status_code, 404
+        )
+
+    def test_the_person_who_reported_it_may_say_it_is_not_fixed(self):
+        ticket = self.open_ticket(
+            created_by=self.reporter, visibility=Visibility.ALL,
+            status=Ticket.Status.RESOLVED, resolved_by=self.member,
+        )
+        self.client.force_login(self.reporter)
+        self.post("tickets:status", ticket, {"status": "open"})
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.status, Ticket.Status.OPEN)
+        self.assertEqual(ticket.reopened_count, 1)
+        # Cleared on purpose: the count is about the ticket, never about who
+        # closed it too early (D-10).
+        self.assertIsNone(ticket.resolved_by)
+
+    def test_an_unknown_status_goes_nowhere(self):
+        ticket = self.open_ticket()
+        self.client.force_login(self.member)
+        self.assertEqual(
+            self.post("tickets:status", ticket, {"status": "archived"}).status_code, 404
+        )
+
+    # --- assignment ---------------------------------------------------------
+
+    def test_claiming_is_a_toggle(self):
+        ticket = self.open_ticket()
+        self.client.force_login(self.member)
+        self.post("tickets:claim", ticket)
+        self.assertIn(self.member, ticket.assignees.all())
+        self.post("tickets:claim", ticket)
+        self.assertNotIn(self.member, ticket.assignees.all())
+
+    def test_a_reporter_cannot_claim(self):
+        ticket = self.open_ticket(visibility=Visibility.ALL)
+        self.client.force_login(self.reporter)
+        self.assertEqual(self.post("tickets:claim", ticket).status_code, 404)
+
+    def test_only_an_admin_puts_somebody_else_on_a_ticket(self):
+        """Assigning grants read access; letting a member do it would be a way
+        of widening a ticket without being an admin."""
+        ticket = self.open_ticket()
+        self.client.force_login(self.member)
+        response = self.post("tickets:assignees", ticket, {"users": [self.other_member.pk]})
+        self.assertEqual(response.status_code, 404)
+
+        self.client.force_login(self.admin)
+        self.post("tickets:assignees", ticket, {"users": [self.other_member.pk]})
+        self.assertEqual(list(ticket.assignees.all()), [self.other_member])
+
+    def test_a_reporter_is_never_put_on_a_ticket(self):
+        ticket = self.open_ticket()
+        self.client.force_login(self.admin)
+        self.post("tickets:assignees", ticket, {"users": [self.reporter.pk]})
+        self.assertEqual(ticket.assignees.count(), 0)
+
+    # --- visibility ---------------------------------------------------------
+
+    def test_a_member_may_restrict_but_not_widen(self):
+        ticket = self.open_ticket(visibility=Visibility.TEAM)
+        self.client.force_login(self.member)
+        self.assertEqual(
+            self.post("tickets:visibility", ticket, {"visibility": Visibility.ALL}).status_code,
+            404,
+        )
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.visibility, Visibility.TEAM)
+
+    def test_a_member_may_not_restrict_below_their_own_clearance(self):
+        """Or they would hide from themselves a ticket that is not theirs."""
+        ticket = self.open_ticket(created_by=self.admin)
+        self.client.force_login(self.member)
+        self.assertEqual(
+            self.post("tickets:visibility", ticket, {"visibility": Visibility.ADMINS}).status_code,
+            404,
+        )
+
+    def test_an_admin_widens_and_the_move_is_recorded(self):
+        ticket = self.open_ticket(visibility=Visibility.TEAM)
+        self.client.force_login(self.admin)
+        self.post("tickets:visibility", ticket, {"visibility": Visibility.ALL})
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.visibility, Visibility.ALL)
+        entry = AuditLog.objects.get(action=AuditLog.Action.VISIBILITY_CHANGE)
+        self.assertEqual(entry.actor, self.admin)
+        self.assertEqual(entry.payload, {"from": Visibility.TEAM, "to": Visibility.ALL})
+
+    # --- removing a photo ---------------------------------------------------
+
+    def test_whoever_took_the_photo_may_remove_it(self):
+        """Doc 06 asks for this to be easy: a face may be in the background."""
+        ticket = self.open_ticket()
+        self.client.force_login(self.member)
+        self.post("tickets:comment", ticket, {
+            "body": "here", "photos": SimpleUploadedFile(
+                "p.jpg", JpegMetadataTests.photo(), content_type="image/jpeg"
+            ),
+        })
+        item = ticket.attachments.get()
+        path = Path(self.media) / item.storage_path
+
+        self.client.force_login(self.other_member)
+        self.assertEqual(self.post("tickets:attachment_delete", item).status_code, 404)
+
+        self.client.force_login(self.member)
+        self.post("tickets:attachment_delete", item)
+        self.assertEqual(ticket.attachments.count(), 0)
+        self.assertFalse(path.exists())
+
+    # --- the device list ----------------------------------------------------
+
+    def test_the_machine_list_follows_the_room(self):
+        self.client.force_login(self.member)
+        response = self.client.get(reverse("tickets:room_devices"), {"room": self.room.pk})
+        self.assertContains(response, "r204-01")
+        self.assertNotContains(response, "r205-01")
+
+    # --- what the screens actually put in front of a pupil -------------------
+
+    def test_the_composer_names_every_audience_and_says_what_it_means(self):
+        """Doc 08 asks that visibility never be implicit -- least of all at the
+        moment somebody is deciding it."""
+        self.client.force_login(self.member)
+        response = self.client.get(reverse("tickets:create"))
+        self.assertEqual(response.status_code, 200)
+        for value, label in Visibility.choices:
+            self.assertContains(response, str(label))
+        self.assertContains(response, str(VISIBILITY_HELP[Visibility.ALL]))
+        # enctype is what makes a photo arrive rather than its file name.
+        self.assertContains(response, "multipart/form-data")
+
+    def test_the_detail_screen_offers_the_actions_the_reader_may_take(self):
+        # At "everyone", a member has somewhere to move it to: down to the team.
+        # On a team ticket they have neither -- and the control is then absent
+        # rather than drawn as a form that can only re-submit the status quo.
+        ticket = self.open_ticket(visibility=Visibility.ALL)
+        self.client.force_login(self.member)
+        response = self.client.get(reverse("tickets:detail", args=[ticket.pk]))
+        self.assertContains(response, reverse("tickets:comment", args=[ticket.pk]))
+        self.assertContains(response, reverse("tickets:claim", args=[ticket.pk]))
+        # A member may restrict, so the control is there...
+        self.assertContains(response, reverse("tickets:visibility", args=[ticket.pk]))
+        # ...but never the picker that grants access to somebody else.
+        self.assertNotContains(response, reverse("tickets:assignees", args=[ticket.pk]))
+
+    def test_a_reporter_sees_no_control_they_may_not_use(self):
+        """A button that answers "you may not" is a button that should not be drawn."""
+        ticket = self.open_ticket(visibility=Visibility.ALL, created_by=self.member)
+        self.client.force_login(self.reporter)
+        response = self.client.get(reverse("tickets:detail", args=[ticket.pk]))
+        self.assertNotContains(response, reverse("tickets:claim", args=[ticket.pk]))
+        self.assertNotContains(response, reverse("tickets:status", args=[ticket.pk]))
+        # Their own report is another matter: they may still withdraw it.
+        mine = self.open_ticket(created_by=self.reporter, visibility=Visibility.ALL)
+        response = self.client.get(reverse("tickets:detail", args=[mine.pk]))
+        self.assertContains(response, reverse("tickets:status", args=[mine.pk]))

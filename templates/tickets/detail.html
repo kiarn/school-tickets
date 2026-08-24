@@ -1,0 +1,276 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block title %}{{ ticket.title }}{% endblock %}
+
+{% block content %}
+
+<a href="{% url 'tickets:list' %}" class="btn btn-ghost btn-sm mb-2 -ms-2">
+    ← {% translate "Tickets" %}
+</a>
+
+<article class="card bg-base-100 shadow-sm mb-3">
+    <div class="card-body gap-3">
+
+        <div>
+            <p class="text-xs uppercase tracking-wide opacity-60">{{ ticket.room_label }}</p>
+            <h1 class="text-xl font-semibold leading-snug break-words">{{ ticket.title }}</h1>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-1.5">
+            {% if ticket.status == "open" %}
+                <span class="badge badge-warning">{{ ticket.get_status_display }}</span>
+            {% elif ticket.status == "in_progress" %}
+                <span class="badge badge-info">{{ ticket.get_status_display }}</span>
+            {% elif ticket.status == "resolved" %}
+                <span class="badge badge-success">{{ ticket.get_status_display }}</span>
+            {% else %}
+                <span class="badge badge-ghost">{{ ticket.get_status_display }}</span>
+            {% endif %}
+
+            {% if ticket.priority == "high" %}
+                <span class="badge badge-error">{{ ticket.get_priority_display }}</span>
+            {% elif ticket.priority == "low" %}
+                <span class="badge badge-ghost">{{ ticket.get_priority_display }}</span>
+            {% endif %}
+
+            {% for tag in ticket.tags.all %}
+                <span class="badge badge-outline">{{ tag.name }}</span>
+            {% endfor %}
+        </div>
+
+        {% comment %} Never a detail: widening retroactively publishes the whole thread, so
+           the reader is told plainly who can see this (doc 08, D-21). When the
+           reader may change it, the same block is where they do it -- one place
+           to read and to act, not a setting hidden elsewhere. {% endcomment %}
+        {% if visibility_choices|length > 1 %}
+            <details class="collapse collapse-arrow bg-base-200">
+                <summary class="collapse-title text-sm py-2 min-h-0">
+                    <strong>{% translate "Visibility" %}:</strong>
+                    {{ ticket.get_visibility_display }}
+                </summary>
+                <div class="collapse-content">
+                    <form method="post" action="{% url 'tickets:visibility' ticket.pk %}"
+                          class="flex flex-col gap-3">
+                        {% csrf_token %}
+                        {% with form=visibility_form %}
+                            {% include "tickets/_visibility_choice.html" %}
+                        {% endwith %}
+                        {% if can_widen %}
+                            <p class="text-xs opacity-70">
+                                {% translate "Widening publishes every comment and photo already in this thread." %}
+                            </p>
+                        {% endif %}
+                        <button type="submit" class="btn btn-sm btn-primary">
+                            {% translate "Change visibility" %}
+                        </button>
+                    </form>
+                </div>
+            </details>
+        {% else %}
+            <div class="alert alert-soft py-2 text-sm">
+                <span>
+                    <strong>{% translate "Visibility" %}:</strong>
+                    {{ ticket.get_visibility_display }}
+                </span>
+            </div>
+        {% endif %}
+
+        {% if ticket.description %}
+            <p class="whitespace-pre-line break-words">{{ ticket.description }}</p>
+        {% endif %}
+
+        {% if ticket.device %}
+            <div class="text-sm opacity-70">
+                <span class="font-medium">{% translate "Machine" %}:</span>
+                {{ ticket.device.hostname }}
+                <span class="font-mono text-xs">{{ ticket.device.mac }}</span>
+            </div>
+            {% comment %} The LINBO block belongs here (doc 05: "fiche machine, bloc d'état,
+               avec les deux âges"). It waits on the endpoint semantics, and an
+               age shown without the age of the observation would lie. {% endcomment %}
+        {% endif %}
+
+        <div class="text-xs opacity-60">
+            {% blocktranslate with who=ticket.created_by age=ticket.created_at|timesince %}
+                Opened by {{ who }}, {{ age }} ago
+            {% endblocktranslate %}
+            {% if ticket.reopened_count %}
+                ·
+                {% blocktranslate count count=ticket.reopened_count %}
+                    reopened once
+                {% plural %}
+                    reopened {{ count }} times
+                {% endblocktranslate %}
+            {% endif %}
+        </div>
+    </div>
+</article>
+
+{% comment %} Who is on it. Assignment grants read access, which is why only an admin
+   may put somebody else here (see tickets.views.ticket_claim). {% endcomment %}
+<section class="card bg-base-100 shadow-sm mb-3">
+    <div class="card-body gap-3 py-4">
+        <div class="flex items-center justify-between gap-2">
+            <h2 class="text-sm font-semibold opacity-70">{% translate "On it" %}</h2>
+            {% if assignable %}
+                <button type="button" class="btn btn-ghost btn-xs"
+                        onclick="assign_modal.showModal()">{% translate "Change" %}</button>
+            {% endif %}
+        </div>
+
+        <div class="flex flex-wrap gap-1.5">
+            {% for person in assignees %}
+                {% comment %} A name is a link only for whoever may open that profile;
+                   drawing it for everybody would send members to a 404. {% endcomment %}
+                {% if user.is_admin %}
+                    <a class="badge badge-neutral"
+                       href="{% url 'accounts:profile_detail' person.pk %}">{{ person }}</a>
+                {% else %}
+                    <span class="badge badge-neutral">{{ person }}</span>
+                {% endif %}
+            {% empty %}
+                <span class="text-sm opacity-60">{% translate "Nobody yet." %}</span>
+            {% endfor %}
+        </div>
+
+        {% if can_work %}
+            <form method="post" action="{% url 'tickets:claim' ticket.pk %}">
+                {% csrf_token %}
+                {% if is_assignee %}
+                    <button type="submit" class="btn btn-outline btn-sm w-full">
+                        {% translate "Put it back" %}
+                    </button>
+                {% else %}
+                    <button type="submit" class="btn btn-primary btn-sm w-full">
+                        {% translate "I am on it" %}
+                    </button>
+                {% endif %}
+            </form>
+        {% endif %}
+    </div>
+</section>
+
+{% if assignable %}
+    <dialog id="assign_modal" class="modal modal-bottom sm:modal-middle">
+        <div class="modal-box">
+            <h3 class="font-semibold mb-3">{% translate "Who is on this ticket" %}</h3>
+            <form method="post" action="{% url 'tickets:assignees' ticket.pk %}"
+                  class="flex flex-col gap-2">
+                {% csrf_token %}
+                {% for person in assignable %}
+                    <label class="label cursor-pointer justify-start gap-3">
+                        <input type="checkbox" name="users" value="{{ person.pk }}"
+                               class="checkbox checkbox-sm"
+                               {% if person in assignees %}checked{% endif %}>
+                        <span>{{ person }}</span>
+                    </label>
+                {% endfor %}
+                <div class="modal-action">
+                    <button type="button" class="btn btn-ghost"
+                            onclick="assign_modal.close()">{% translate "Cancel" %}</button>
+                    <button type="submit" class="btn btn-primary">{% translate "Save" %}</button>
+                </div>
+            </form>
+        </div>
+        <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    </dialog>
+{% endif %}
+
+{% comment %} The status bar. Only the moves that make sense from here are shown: a
+   button that answers "you may not" is a button that should not be drawn. {% endcomment %}
+{% if can_work or can_reopen %}
+    <section class="flex flex-wrap gap-2 mb-3">
+        {% if ticket.status == "resolved" or ticket.status == "cancelled" %}
+            <form method="post" action="{% url 'tickets:status' ticket.pk %}" class="flex-1">
+                {% csrf_token %}
+                <input type="hidden" name="status" value="open">
+                <button type="submit" class="btn btn-warning w-full">
+                    {% translate "Reopen: not fixed" %}
+                </button>
+            </form>
+        {% else %}
+            {% if can_work and ticket.status != "in_progress" %}
+                <form method="post" action="{% url 'tickets:status' ticket.pk %}" class="flex-1">
+                    {% csrf_token %}
+                    <input type="hidden" name="status" value="in_progress">
+                    <button type="submit" class="btn btn-outline w-full">
+                        {% translate "In progress" %}
+                    </button>
+                </form>
+            {% endif %}
+            {% if can_work %}
+                {% comment %} Pupils close their own tickets: that is the point, and the
+                   full retest is what the wording asks for (doc 00). {% endcomment %}
+                <form method="post" action="{% url 'tickets:status' ticket.pk %}" class="flex-1">
+                    {% csrf_token %}
+                    <input type="hidden" name="status" value="resolved">
+                    <button type="submit" class="btn btn-success w-full">
+                        {% translate "Retested, resolved" %}
+                    </button>
+                </form>
+            {% endif %}
+            <form method="post" action="{% url 'tickets:status' ticket.pk %}" class="flex-1">
+                {% csrf_token %}
+                <input type="hidden" name="status" value="cancelled">
+                <button type="submit" class="btn btn-ghost w-full">
+                    {% translate "Withdraw" %}
+                </button>
+            </form>
+        {% endif %}
+    </section>
+{% endif %}
+
+{% if attachments %}
+    <section class="mb-3">
+        <h2 class="text-sm font-semibold opacity-70 mb-2 px-1">{% translate "Photos" %}</h2>
+        {% include "tickets/_photo_grid.html" with items=attachments cols="grid-cols-3" %}
+    </section>
+{% endif %}
+
+<section>
+    <h2 class="text-sm font-semibold opacity-70 mb-2 px-1">
+        {% translate "What has already been tried" %}
+    </h2>
+
+    {% for comment in comments %}
+        <div class="chat {% if comment.author_id == user.pk %}chat-end{% else %}chat-start{% endif %}">
+            <div class="chat-header text-xs opacity-60 gap-1">
+                {{ comment.author }}
+                <time datetime="{{ comment.created_at|date:'c' }}">
+                    {{ comment.created_at|timesince }}
+                </time>
+            </div>
+            <div class="chat-bubble whitespace-pre-line break-words">
+                {{ comment.body }}
+                {% if comment.attachments.all %}
+                    <div class="mt-2 w-48 max-w-full">
+                        {% include "tickets/_photo_grid.html" with items=comment.attachments.all cols="grid-cols-2" %}
+                    </div>
+                {% endif %}
+            </div>
+            {% if comment.edited_at %}
+                <div class="chat-footer text-xs opacity-50">{% translate "edited" %}</div>
+            {% endif %}
+        </div>
+    {% empty %}
+        <p class="text-sm opacity-60 px-1">{% translate "No note yet." %}</p>
+    {% endfor %}
+
+    {% comment %} The composer. Photos here rather than only at creation: most of what a
+       repair learns is learnt after the ticket was opened. {% endcomment %}
+    <form method="post" action="{% url 'tickets:comment' ticket.pk %}"
+          enctype="multipart/form-data" novalidate
+          class="card bg-base-100 shadow-sm mt-4">
+        {% csrf_token %}
+        <div class="card-body gap-2 py-4">
+            {{ comment_form.body }}
+            {{ comment_form.photos }}
+            <button type="submit" class="btn btn-primary btn-sm">
+                {% translate "Add a note" %}
+            </button>
+        </div>
+    </form>
+</section>
+
+{% endblock %}

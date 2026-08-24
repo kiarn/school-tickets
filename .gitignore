@@ -1,0 +1,17 @@
+# Design journal: French, and deliberately out of the repository (D-23).
+# It is the roadmap, not a shipped artefact -- and it is NOT versioned here.
+/specs/
+
+__pycache__/
+*.py[cod]
+.venv/
+*.sqlite3
+/media/
+
+# D-18 is explicit and wins over convenience here: the fetched daisyUI CSS, the
+# compiled stylesheet and the vendored scripts ARE versioned. A .deb must not
+# depend on a CDN being reachable, nor change content between two builds.
+# Only the Tailwind binary stays out -- the script pins its URL (D-18, step 5).
+/tools/tailwindcss
+.env
+*.mo

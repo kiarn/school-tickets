@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block title %}{% translate "New ticket" %}{% endblock %}
+
+{% block content %}
+
+<a href="{% url 'tickets:list' %}" class="btn btn-ghost btn-sm mb-2 -ms-2">
+    ← {% translate "Tickets" %}
+</a>
+
+<h1 class="text-xl font-semibold mb-3 px-1">{% translate "Report a fault" %}</h1>
+
+{% comment %} enctype is what makes the photos arrive; without it the file input posts
+   its file name and nothing else. novalidate leaves the errors to the server:
+   they are the ones that count, and the browser's are untranslated. {% endcomment %}
+<form method="post" enctype="multipart/form-data" novalidate class="flex flex-col gap-3">
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+        <div class="alert alert-error py-2">
+            <span>{{ form.non_field_errors|join:" " }}</span>
+        </div>
+    {% endif %}
+
+    {% comment %} Where first: on a phone, standing in the room, this is the one field
+       already known before the fault has been described. {% endcomment %}
+    <fieldset class="fieldset card bg-base-100 shadow-sm p-4">
+        <legend class="fieldset-legend">{% translate "Where" %}</legend>
+
+        <label class="label" for="{{ form.room.id_for_label }}">{% translate "Room" %}</label>
+        {{ form.room }}
+        {% for error in form.room.errors %}
+            <p class="text-error text-sm mt-1">{{ error }}</p>
+        {% endfor %}
+
+        <label class="label mt-3" for="{{ form.device.id_for_label }}">
+            {% translate "Machine" %}
+        </label>
+        {{ form.device }}
+        <p class="label text-xs opacity-70">
+            {% translate "Optional. Leave empty if the fault is not one machine's." %}
+        </p>
+        {% for error in form.device.errors %}
+            <p class="text-error text-sm mt-1">{{ error }}</p>
+        {% endfor %}
+    </fieldset>
+
+    <fieldset class="fieldset card bg-base-100 shadow-sm p-4">
+        <legend class="fieldset-legend">{% translate "What" %}</legend>
+
+        <label class="label" for="{{ form.title.id_for_label }}">{% translate "Title" %}</label>
+        {{ form.title }}
+        {% for error in form.title.errors %}
+            <p class="text-error text-sm mt-1">{{ error }}</p>
+        {% endfor %}
+
+        <label class="label mt-3" for="{{ form.description.id_for_label }}">
+            {% translate "Description" %}
+        </label>
+        {{ form.description }}
+
+        <label class="label mt-3" for="{{ form.priority.id_for_label }}">
+            {% translate "Priority" %}
+        </label>
+        {{ form.priority }}
+
+        {% if form.tags.field.queryset %}
+            <span class="label mt-3">{% translate "Tags" %}</span>
+            <div class="flex flex-wrap gap-2">
+                {% for tag in form.tags %}
+                    <label class="label cursor-pointer gap-2 rounded-box border border-base-300
+                                  px-3 py-2 has-checked:border-primary has-checked:bg-primary/5">
+                        {{ tag.tag }}
+                        <span>{{ tag.choice_label }}</span>
+                    </label>
+                {% endfor %}
+            </div>
+        {% endif %}
+    </fieldset>
+
+    <fieldset class="fieldset card bg-base-100 shadow-sm p-4">
+        <legend class="fieldset-legend">{% translate "Photos" %}</legend>
+        {{ form.photos }}
+        <p class="label text-xs opacity-70">
+            {% comment %} The instruction of doc 06, at the moment it applies -- not in a
+               charter nobody reads. {% endcomment %}
+            {% translate "Photograph equipment, not people. Location data is removed." %}
+        </p>
+        {% for error in form.photos.errors %}
+            <p class="text-error text-sm mt-1">{{ error }}</p>
+        {% endfor %}
+    </fieldset>
+
+    <fieldset class="fieldset card bg-base-100 shadow-sm p-4">
+        <legend class="fieldset-legend">{% translate "Who may read this" %}</legend>
+        {% include "tickets/_visibility_choice.html" %}
+    </fieldset>
+
+    <button type="submit" class="btn btn-primary w-full">{% translate "Open the ticket" %}</button>
+</form>
+
+{% endblock %}

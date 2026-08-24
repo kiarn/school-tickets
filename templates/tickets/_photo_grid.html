@@ -1,0 +1,36 @@
+{% load i18n %}
+{% comment %} A grid of photos, with the removal button doc 06 asks to be easy to reach:
+   "un visage au second plan" is the case, and it must not need an admin.
+   `items` is set by the caller, and so is `cols` -- as a whole class name.
+   Tailwind reads the templates as text: `grid-cols-{{ n }}` is a class it can
+   never see, and an unseen class is silently no class at all. {% endcomment %}
+<div class="grid {{ cols|default:'grid-cols-3' }} gap-2">
+    {% for item in items %}
+        <div class="relative aspect-square">
+            {% comment %} Always through the view, never MEDIA_URL: nginx knows no
+               visibility rule (D-21). {% endcomment %}
+            <a href="{% url 'tickets:attachment' item.pk %}"
+               class="block w-full h-full overflow-hidden rounded-box bg-base-300">
+                {% if "image" in item.mime %}
+                    <img src="{% url 'tickets:attachment' item.pk %}"
+                         alt="{{ item.filename }}"
+                         loading="lazy"
+                         class="w-full h-full object-cover">
+                {% else %}
+                    <span class="w-full h-full grid place-items-center p-2 text-xs text-center break-all">
+                        {{ item.filename }}
+                    </span>
+                {% endif %}
+            </a>
+            {% if item.uploaded_by_id == user.pk or user.is_admin %}
+                <form method="post" action="{% url 'tickets:attachment_delete' item.pk %}"
+                      class="absolute top-1 end-1">
+                    {% csrf_token %}
+                    <button type="submit"
+                            class="btn btn-xs btn-circle btn-neutral opacity-80"
+                            aria-label="{% translate 'Remove this photo' %}">✕</button>
+                </form>
+            {% endif %}
+        </div>
+    {% endfor %}
+</div>

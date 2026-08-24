@@ -1,0 +1,31 @@
+[project]
+name = "school_tickets"
+version = "0.1.0.dev0"
+description = "Ticket management for the pupils who repair the hardware of a linuxmuster.net school"
+requires-python = ">=3.11"
+license = "GPL-3.0-or-later"
+dependencies = [
+    "Django>=5.0,<6",
+    "mysqlclient>=2.2",
+    # Q-07: metadata removal on every format we accept, and the downscale
+    # specs/06 asks for. Debian ships it as python3-pil.
+    "Pillow>=10",
+    # Web Push (D-14, D-28): VAPID, ECDH and AES-GCM are not things to write by
+    # hand. Only the worker ever calls it -- it is the process that holds the
+    # private key.
+    "pywebpush>=2.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-django"]
+# HEIC is what an iPhone stores; Pillow cannot decode it alone. Optional
+# because iOS converts to JPEG on a normal form upload -- install it only if a
+# real HEIC ever turns up. tickets/attachments.py registers it if present.
+heic = ["pillow-heif>=0.16"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["school_tickets", "accounts", "parc", "tickets", "badges", "notifications"]

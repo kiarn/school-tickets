@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block title %}{% translate "Sign in" %}{% endblock %}
+
+{% block content %}
+
+<div class="min-h-[70dvh] flex flex-col justify-center">
+    <h1 class="text-2xl font-semibold text-center mb-1">school-tickets</h1>
+    <p class="text-sm opacity-70 text-center mb-5">
+        {% translate "Repairs, room by room." %}
+    </p>
+
+    <form method="post" novalidate class="card bg-base-100 shadow-sm">
+        {% csrf_token %}
+        <div class="card-body gap-3">
+
+            {% if form.non_field_errors %}
+                <div class="alert alert-error py-2">
+                    <span>{{ form.non_field_errors|join:" " }}</span>
+                </div>
+            {% endif %}
+
+            <label class="label" for="{{ form.cn.id_for_label }}">{{ form.cn.label }}</label>
+            {{ form.cn }}
+            {% for error in form.cn.errors %}
+                <p class="text-error text-sm">{{ error }}</p>
+            {% endfor %}
+
+            <label class="label" for="{{ form.password.id_for_label }}">
+                {{ form.password.label }}
+            </label>
+            {{ form.password }}
+            {% for error in form.password.errors %}
+                <p class="text-error text-sm">{{ error }}</p>
+            {% endfor %}
+
+            {% comment %} LoginView reads this to send you back where you were heading. {% endcomment %}
+            <input type="hidden" name="next" value="{{ next }}">
+
+            <button type="submit" class="btn btn-primary w-full mt-1">
+                {% translate "Sign in" %}
+            </button>
+        </div>
+    </form>
+
+    {% comment %} Said plainly rather than left to be discovered by a failed attempt:
+       there is no sign-up here, and there is not meant to be one (D-22). {% endcomment %}
+    <p class="text-xs opacity-60 text-center mt-4 px-4">
+        {% translate "Accounts are added by a teacher. There is nothing to sign up for." %}
+    </p>
+</div>
+
+{% endblock %}

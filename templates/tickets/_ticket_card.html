@@ -1,0 +1,52 @@
+{% load i18n %}
+{% comment %} One ticket, as a row in the list. Kept as a partial so HTMX can re-render a
+   single card later without touching the page around it (D-17). {% endcomment %}
+<a href="{% url 'tickets:detail' ticket.pk %}"
+   class="card card-sm bg-base-100 shadow-sm active:scale-[.99] transition-transform">
+    <div class="card-body gap-2">
+
+        <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+                {% comment %} The frozen label, not room.name: a ticket from March still reads
+                   "204" after the room became A204, because that is what was true
+                   that day (doc 03). {% endcomment %}
+                <p class="text-xs uppercase tracking-wide opacity-60 truncate">
+                    {{ ticket.room_label }}
+                </p>
+                <h2 class="font-semibold leading-snug break-words">{{ ticket.title }}</h2>
+            </div>
+
+            {% if ticket.status == "open" %}
+                <span class="badge badge-warning badge-sm shrink-0">{{ ticket.get_status_display }}</span>
+            {% elif ticket.status == "in_progress" %}
+                <span class="badge badge-info badge-sm shrink-0">{{ ticket.get_status_display }}</span>
+            {% elif ticket.status == "resolved" %}
+                <span class="badge badge-success badge-sm shrink-0">{{ ticket.get_status_display }}</span>
+            {% else %}
+                <span class="badge badge-ghost badge-sm shrink-0">{{ ticket.get_status_display }}</span>
+            {% endif %}
+        </div>
+
+        <div class="flex flex-wrap items-center gap-1.5 text-xs">
+            {% if ticket.priority == "high" %}
+                <span class="badge badge-error badge-sm">{{ ticket.get_priority_display }}</span>
+            {% endif %}
+
+            {% for tag in ticket.tags.all %}
+                <span class="badge badge-outline badge-sm">{{ tag.name }}</span>
+            {% endfor %}
+
+            {% comment %} Visibility is never implicit: a pupil must be able to tell at a
+               glance who else can read what they wrote (doc 08). {% endcomment %}
+            {% if ticket.visibility < 30 %}
+                <span class="badge badge-ghost badge-sm gap-1" title="{{ ticket.get_visibility_display }}">
+                    {{ ticket.get_visibility_display }}
+                </span>
+            {% endif %}
+
+            <span class="opacity-60 ms-auto whitespace-nowrap">
+                {% blocktranslate with age=ticket.created_at|timesince %}{{ age }} ago{% endblocktranslate %}
+            </span>
+        </div>
+    </div>
+</a>

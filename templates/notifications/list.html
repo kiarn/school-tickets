@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block title %}{% translate "Notifications" %}{% endblock %}
+
+{% block content %}
+
+<a href="{% url 'tickets:list' %}" class="btn btn-ghost btn-sm mb-2 -ms-2">
+    ← {% translate "Tickets" %}
+</a>
+
+<div class="flex items-center justify-between gap-2 mb-3">
+    <h1 class="text-xl font-semibold">{% translate "Notifications" %}</h1>
+    {% if unread_count %}
+        <form method="post" action="{% url 'notifications:read' %}">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-ghost btn-sm">
+                {% translate "Mark all read" %}
+            </button>
+        </form>
+    {% endif %}
+</div>
+
+{% comment %} The Push is a reminder, never the only copy (doc 09 §5). This block is
+   what makes that true: it offers the device subscription, and says plainly
+   what happens without it. {% endcomment %}
+<section class="card bg-base-100 shadow-sm mb-4" id="push-box" hidden>
+    <div class="card-body gap-2 py-4">
+        <h2 class="text-sm font-semibold opacity-70">{% translate "On this device" %}</h2>
+        <p class="text-xs opacity-70" id="push-state"></p>
+        <button type="button" class="btn btn-primary btn-sm" id="push-enable">
+            {% translate "Send notifications to this device" %}
+        </button>
+        <p class="text-xs opacity-60">
+            {% translate "Nothing is sent at night or at the weekend. What arrives outside those hours waits, and stays on this page." %}
+        </p>
+    </div>
+</section>
+
+<ul class="flex flex-col gap-2 list-none p-0 m-0">
+    {% for item in notifications %}
+        <li>
+            <a href="{% url 'notifications:open' item.pk %}"
+               class="card card-sm bg-base-100 shadow-sm block
+                      {% if not item.read_at %}border-s-4 border-primary{% endif %}">
+                <div class="card-body gap-1">
+                    <div class="flex items-start justify-between gap-3">
+                        <span class="font-medium">{{ item.get_kind_display }}</span>
+                        <span class="text-xs opacity-60 whitespace-nowrap">
+                            {{ item.created_at|timesince }}
+                        </span>
+                    </div>
+                    {% if item.ticket %}
+                        <span class="text-sm opacity-70 break-words">
+                            {{ item.ticket.room_label }} · {{ item.ticket.title }}
+                        </span>
+                    {% endif %}
+                    {% comment %} The actor's name may appear here and never in a Push:
+                       this page is behind the session (§2). {% endcomment %}
+                    {% if item.actor %}
+                        <span class="text-xs opacity-60">{{ item.actor }}</span>
+                    {% endif %}
+                </div>
+            </a>
+        </li>
+    {% empty %}
+        <li class="card bg-base-100 shadow-sm">
+            <div class="card-body items-center text-center py-10">
+                <p class="text-sm opacity-60">{% translate "Nothing yet." %}</p>
+            </div>
+        </li>
+    {% endfor %}
+</ul>
+
+<script>
+(function () {
+    var box = document.getElementById("push-box");
+    var state = document.getElementById("push-state");
+    var button = document.getElementById("push-enable");
+    var publicKey = "{{ vapid_public_key|escapejs }}";
+
+    // No key configured, or a browser without Push: the page simply does not
+    // offer something that cannot work. The list above still does its job.
+    if (!publicKey || !("serviceWorker" in navigator) || !("PushManager" in window)) {
+        return;
+    }
+    box.hidden = false;
+
+    function urlBase64ToUint8Array(base64String) {
+        var padding = "=".repeat((4 - base64String.length % 4) % 4);
+        var base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+        var raw = atob(base64);
+        return Uint8Array.from(raw.split("").map(function (c) { return c.charCodeAt(0); }));
+    }
+
+    function csrf() {
+        var match = document.cookie.match(/(^|;\s*)csrftoken=([^;]*)/);
+        return match ? decodeURIComponent(match[2]) : "";
+    }
+
+    function say(text, done) {
+        state.textContent = text;
+        button.hidden = !!done;
+    }
+
+    navigator.serviceWorker.register("/sw.js").then(function (registration) {
+        return registration.pushManager.getSubscription().then(function (existing) {
+            if (existing) { say("{% translate 'This device is subscribed.' %}", true); }
+            else { say("{% translate 'This device is not subscribed yet.' %}", false); }
+
+            button.addEventListener("click", function () {
+                button.disabled = true;
+                Notification.requestPermission().then(function (permission) {
+                    if (permission !== "granted") {
+                        // Asking twice does not work, so it is said once,
+                        // plainly (doc 09 §1).
+                        say("{% translate 'Refused. The browser will not ask again; the list on this page keeps working.' %}", true);
+                        return;
+                    }
+                    registration.pushManager.subscribe({
+                        userVisibleOnly: true,
+                        applicationServerKey: urlBase64ToUint8Array(publicKey)
+                    }).then(function (subscription) {
+                        return fetch("{% url 'notifications:subscribe' %}", {
+                            method: "POST",
+                            headers: {"Content-Type": "application/json", "X-CSRFToken": csrf()},
+                            body: JSON.stringify(subscription)
+                        });
+                    }).then(function () {
+                        say("{% translate 'This device is subscribed.' %}", true);
+                    }).catch(function () {
+                        button.disabled = false;
+                        say("{% translate 'Could not subscribe this device.' %}", false);
+                    });
+                });
+            });
+        });
+    }).catch(function () {
+        say("{% translate 'Notifications are unavailable in this browser.' %}", true);
+    });
+})();
+</script>
+
+{% endblock %}

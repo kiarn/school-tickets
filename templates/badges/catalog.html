@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block title %}{% translate "Badges" %}{% endblock %}
+
+{% block content %}
+
+<a href="{% url 'tickets:list' %}" class="btn btn-ghost btn-sm mb-2 -ms-2">
+    ← {% translate "Tickets" %}
+</a>
+
+<h1 class="text-xl font-semibold mb-1 px-1">{% translate "Badges" %}</h1>
+{% comment %} Said out loud, because a visitor will look for the holders and it is
+   better that they read why they are not there (D-24, D-10). {% endcomment %}
+<p class="text-sm opacity-70 mb-3 px-1">
+    {% translate "What exists and how it is earned. Who holds what is on each person's profile — there is no ranking here, and there will not be one." %}
+</p>
+
+<ul class="flex flex-col gap-2 list-none p-0 m-0 mb-4">
+    {% for badge in badges %}
+        <li class="card card-sm bg-base-100 shadow-sm">
+            <div class="card-body flex-row items-start gap-3">
+                <span class="text-2xl leading-none shrink-0"
+                      aria-hidden="true">{{ badge.icon|default:"★" }}</span>
+                <div class="min-w-0 flex flex-col gap-1">
+                    <span class="font-medium break-words">{{ badge.label }}</span>
+                    {% if badge.summary %}
+                        <span class="text-sm opacity-70 break-words">{{ badge.summary }}</span>
+                    {% endif %}
+                    <span class="flex flex-wrap gap-1.5 mt-1">
+                        {% if badge.category %}
+                            <span class="badge badge-outline badge-sm">{{ badge.category }}</span>
+                        {% endif %}
+                        {% comment %} A tally, never a ranking: how many times a badge has
+                           been earned says nothing about who holds it (D-10,
+                           Q-06). It is also what survives an anonymisation.
+                        {% endcomment %}
+                        {% if badge.award_count %}
+                            <span class="badge badge-ghost badge-sm">
+                                {% blocktranslate count count=badge.award_count %}
+                                    awarded once
+                                {% plural %}
+                                    awarded {{ count }} times
+                                {% endblocktranslate %}
+                            </span>
+                        {% endif %}
+                        {% if badge.is_catalog %}
+                            {% comment %} A shared badge is translated; a school's own one is
+                               not, and the distinction is worth showing (D-15). {% endcomment %}
+                            <span class="badge badge-ghost badge-sm">{% translate "Shared" %}</span>
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
+        </li>
+    {% empty %}
+        <li class="card bg-base-100 shadow-sm">
+            <div class="card-body items-center text-center py-8">
+                <p class="text-sm opacity-60">{% translate "No badge yet." %}</p>
+            </div>
+        </li>
+    {% endfor %}
+</ul>
+
+{% if is_admin %}
+    <details class="collapse collapse-arrow bg-base-100 shadow-sm" {% if form.errors %}open{% endif %}>
+        <summary class="collapse-title font-medium">{% translate "Create a badge" %}</summary>
+        <div class="collapse-content">
+            <form method="post" action="{% url 'badges:create' %}" novalidate
+                  class="flex flex-col gap-2">
+                {% csrf_token %}
+                {% for field in form %}
+                    <label class="label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                    {{ field }}
+                    {% for error in field.errors %}
+                        <p class="text-error text-sm">{{ error }}</p>
+                    {% endfor %}
+                {% endfor %}
+                <p class="text-xs opacity-70">
+                    {% translate "It belongs to this school only. Shared badges are a project-wide decision, because they have to be translated." %}
+                </p>
+                <button type="submit" class="btn btn-primary btn-sm mt-1">
+                    {% translate "Create" %}
+                </button>
+            </form>
+        </div>
+    </details>
+
+    <a href="{% url 'badges:award' %}" class="btn btn-outline w-full mt-3">
+        {% translate "Award a badge" %}
+    </a>
+{% endif %}
+
+{% endblock %}
