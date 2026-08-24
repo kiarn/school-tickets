@@ -209,13 +209,6 @@ be written honestly before somebody has read a real response from either system
   some tickets legitimately have no resolution to write -- a duplicate, a false
   alarm, a machine replaced. Showing the gap is the lever, not blocking the
   form (D-12).
-- **Serving an attachment the admin invented.** `Attachment` is still a bare
-  registration, so `storage_path` is a text box, and `tickets/views.py` joins
-  it onto `MEDIA_ROOT`: a `../..` typed there reads any file the process can.
-  Only a superuser can type it, and a superuser has the database anyway, so
-  this is tidiness rather than a hole -- but an attachment is a consequence of
-  an upload, like a `Notification`, and deserves the same `has_add_permission
-  -> False`. Deleting one there also leaves the file on disk.
 - **Empty translation catalogues.** `locale/` holds no `.po` at all, so the
   five catalogue badges shipped with the demo run their names through
   `gettext()` and come back in English, next to a school badge in German.

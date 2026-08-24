@@ -10,7 +10,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from django.core.exceptions import ValidationError
+from django.core.exceptions import SuspiciousFileOperation, ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from PIL import Image
 from django.test import TestCase, override_settings
@@ -1018,3 +1018,114 @@ class TagColourTests(TestCase):
             self.assertIn(f".badge-{value}", css, f"badge-{value} missing from app.css")
         self.assertIn(".badge-soft", css)
         self.assertIn(".badge-outline", css)
+
+
+class AttachmentPathTests(TestCase):
+    """`storage_path` is a text column, and every reader joined it to a root.
+
+    The visibility gate in front of the serving view was correct all along and
+    answered the wrong question: it says who may read the row, not whether the
+    row points at a photo.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.school = School.objects.create(slug="lycee", name="Lycee")
+        cls.room = Room.objects.create(school=cls.school, name="204")
+        cls.boss = User.objects.enroll(school=cls.school, cn="boss", role=Role.ADMIN)
+        cls.ticket = Ticket.objects.create(
+            school=cls.school, room=cls.room, title="Beamer",
+            visibility=Visibility.TEAM, created_by=cls.boss,
+        )
+
+    def setUp(self):
+        self.media = tempfile.mkdtemp()
+        override = override_settings(MEDIA_ROOT=self.media)
+        override.enable()
+        self.addCleanup(override.disable)
+        self.addCleanup(shutil.rmtree, self.media, ignore_errors=True)
+
+        self.outside = Path(self.media).parent / "secret.txt"
+        self.outside.write_text("not yours")
+        self.addCleanup(self.outside.unlink, missing_ok=True)
+
+        self.client.force_login(self.boss)
+
+    def attachment(self, storage_path):
+        return Attachment.objects.create(
+            ticket=self.ticket, uploaded_by=self.boss, filename="innocent.jpg",
+            mime="image/jpeg", size_bytes=1, storage_path=storage_path,
+        )
+
+    def test_an_absolute_path_is_refused_and_needs_no_dot_dot(self):
+        """`Path(root) / "/etc/hostname"` is `/etc/hostname`: pathlib drops the root."""
+        obj = self.attachment(str(self.outside))
+        with self.assertRaises(SuspiciousFileOperation):
+            attachments.resolved_path(obj)
+
+    def test_climbing_out_with_dot_dot_is_refused(self):
+        obj = self.attachment("../secret.txt")
+        with self.assertRaises(SuspiciousFileOperation):
+            attachments.resolved_path(obj)
+
+    def test_a_real_photo_is_still_served(self):
+        inside = Path(self.media) / "attachments" / "lycee" / "2026" / "08"
+        inside.mkdir(parents=True)
+        (inside / "abc.jpg").write_bytes(b"\xff\xd8\xff bytes")
+        obj = self.attachment("attachments/lycee/2026/08/abc.jpg")
+        response = self.client.get(reverse("tickets:attachment", args=[obj.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(b"".join(response.streaming_content), b"\xff\xd8\xff bytes")
+
+    def test_nothing_outside_the_root_is_ever_unlinked(self):
+        """The same join deleted, so the same field removed arbitrary files."""
+        obj = self.attachment(str(self.outside))
+        attachments.delete_file(obj)
+        self.assertTrue(self.outside.exists())
+
+    def test_the_admin_no_longer_offers_the_field_at_all(self):
+        obj = self.attachment("attachments/x.jpg")
+        self.assertEqual(
+            self.client.get(reverse("admin:tickets_attachment_add")).status_code, 403
+        )
+        page = self.client.get(reverse("admin:tickets_attachment_change", args=[obj.pk]))
+        self.assertFalse(page.context["adminform"].form.fields)
+
+    def test_removing_a_photo_from_the_admin_takes_the_bytes_with_it(self):
+        """Doc 06 asks that this be easy, because a photo may show a face."""
+        inside = Path(self.media) / "attachments"
+        inside.mkdir(parents=True)
+        (inside / "face.jpg").write_bytes(b"jpeg")
+        obj = self.attachment("attachments/face.jpg")
+        self.client.post(
+            reverse("admin:tickets_attachment_delete", args=[obj.pk]), {"post": "yes"}
+        )
+        self.assertFalse((inside / "face.jpg").exists())
+        self.assertFalse(Attachment.objects.filter(pk=obj.pk).exists())
+
+
+class CommentAdminTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.school = School.objects.create(slug="lycee", name="Lycee")
+        cls.room = Room.objects.create(school=cls.school, name="204")
+        cls.boss = User.objects.enroll(school=cls.school, cn="boss", role=Role.ADMIN)
+        cls.ticket = Ticket.objects.create(
+            school=cls.school, room=cls.room, title="Beamer",
+            visibility=Visibility.TEAM, created_by=cls.boss,
+        )
+        cls.comment = Comment.objects.create(
+            ticket=cls.ticket, author=cls.boss, body="j'ai vérifié après Lukas"
+        )
+
+    def test_rewriting_a_thread_leaves_a_mark(self):
+        """It stays editable -- doc 06 has no other remedy for a name in the
+        clear -- but the team's memory does not change under them silently."""
+        self.client.force_login(self.boss)
+        self.client.post(
+            reverse("admin:tickets_comment_change", args=[self.comment.pk]),
+            {"body": "vérifié une seconde fois"},
+        )
+        self.comment.refresh_from_db()
+        self.assertEqual(self.comment.body, "vérifié une seconde fois")
+        self.assertIsNotNone(self.comment.edited_at)

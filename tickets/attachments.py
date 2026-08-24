@@ -26,7 +26,7 @@ from pathlib import Path
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 from django.conf import settings
-from django.core.exceptions import ValidationError
+from django.core.exceptions import SuspiciousFileOperation, ValidationError
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
@@ -310,9 +310,46 @@ def store_all(uploads, *, ticket, user, comment=None):
     )
 
 
+def resolved_path(attachment) -> Path:
+    """Where the bytes are -- refusing anything that is not under MEDIA_ROOT.
+
+    ``store()`` above is the only writer of ``storage_path``, and it writes a
+    uuid under ``attachments/<school>/<year>/<month>/``. But it is a plain text
+    column, and every reader joined it onto ``MEDIA_ROOT`` and opened whatever
+    came out. One editable form away -- the Django admin offered exactly that
+    -- and database access became arbitrary file access.
+
+    Note that no ``..`` is needed for it:
+
+        Path("/srv/media") / "/etc/hostname"  ->  Path("/etc/hostname")
+
+    ``pathlib`` drops the left operand when the right one is absolute. Which is
+    why this checks the *result* rather than screening the input: a blocklist
+    of dangerous-looking strings would have missed the shortest attack.
+
+    The root is resolved too, so a symlinked media directory compares against
+    what it points at rather than against its own name.
+    """
+    root = Path(settings.MEDIA_ROOT).resolve()
+    path = (root / attachment.storage_path).resolve()
+    if path != root and not path.is_relative_to(root):
+        raise SuspiciousFileOperation(
+            f"attachment {attachment.pk} points outside MEDIA_ROOT: {attachment.storage_path!r}"
+        )
+    return path
+
+
 def delete_file(attachment) -> None:
     """Remove the bytes from disk. Docs 06 asks that this be easy to do."""
-    path = Path(settings.MEDIA_ROOT) / attachment.storage_path
+    try:
+        path = resolved_path(attachment)
+    except SuspiciousFileOperation:
+        # Deliberately not re-raised: the caller is removing a photo, and a row
+        # pointing outside the media root has no photo to remove. Refusing the
+        # whole deletion would leave the bad row in place, which is the one
+        # outcome nobody wants.
+        log.error("refused to unlink outside MEDIA_ROOT: %r", attachment.storage_path)
+        return
     try:
         path.unlink(missing_ok=True)
     except OSError:

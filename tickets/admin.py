@@ -1,8 +1,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from django.contrib import admin
 from django.db.models import Count
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
+from . import attachments as photos
 from .models import Attachment, Comment, Tag, Ticket, TicketAssignee
 
 
@@ -51,4 +53,60 @@ class TagAdmin(admin.ModelAdmin):
         return obj._tickets
 
 
-admin.site.register([Comment, Attachment])
+@admin.register(Attachment)
+class AttachmentAdmin(admin.ModelAdmin):
+    """A photo is a consequence of an upload, never an entry.
+
+    The same reason ``NotificationAdmin`` refuses additions -- and here it was
+    not only untidy. ``storage_path`` was a free text box, and every reader
+    joined it onto ``MEDIA_ROOT``: one typed field turned database access into
+    arbitrary file read, and through the delete button into arbitrary file
+    removal. ``attachments.resolved_path()`` refuses that on its own now; this
+    stops it being offered in the first place.
+
+    Deletion stays, and takes the bytes with it. Doc 06 asks that removing a
+    photo be easy precisely because one may show a face -- and the admin used
+    to remove only the row, leaving the file on disk.
+    """
+
+    list_display = ("filename", "ticket", "uploaded_by", "mime", "size_bytes", "created_at")
+    list_filter = ("mime",)
+    search_fields = ("filename",)
+    readonly_fields = tuple(f.name for f in Attachment._meta.fields)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def delete_model(self, request, obj):
+        photos.delete_file(obj)
+        super().delete_model(request, obj)
+
+    def delete_queryset(self, request, queryset):
+        # The bulk action goes through a collector that never calls
+        # ``delete_model``.
+        for obj in queryset:
+            photos.delete_file(obj)
+        super().delete_queryset(request, queryset)
+
+
+@admin.register(Comment)
+class CommentAdmin(admin.ModelAdmin):
+    """The body stays editable, and that is deliberate.
+
+    Doc 06 lists it as an accepted blind spot: "j'ai vérifié après Lukas" names
+    somebody in the clear and no anonymisation reaches it. Editing is the only
+    remedy there is, so it stays -- but a thread rewritten with no mark is the
+    team's technical memory quietly changing under them.
+    """
+
+    list_display = ("ticket", "author", "created_at", "edited_at")
+    search_fields = ("body",)
+    readonly_fields = ("ticket", "author", "created_at", "edited_at")
+
+    def save_model(self, request, obj, form, change):
+        if change and "body" in form.changed_data:
+            obj.edited_at = timezone.now()
+        super().save_model(request, obj, form, change)

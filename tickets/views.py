@@ -460,14 +460,21 @@ def attachment(request, pk):
     if not Ticket.objects.visible_to(request.user).filter(pk=obj.ticket_id).exists():
         raise Http404
 
+    # Before either branch: the visibility gate above answers "may this person
+    # read this row", and answered it correctly all along. It says nothing
+    # about whether the row points at a photo or at /etc/hostname.
+    path = photos.resolved_path(obj)
+
     if settings.ST_X_ACCEL_PREFIX:
         response = HttpResponse(status=200)
-        response["X-Accel-Redirect"] = f"{settings.ST_X_ACCEL_PREFIX}/{obj.storage_path}"
+        # The resolved path, relative again: nginx serves the media root and
+        # must be handed something that cannot climb out of it either.
+        inside = path.relative_to(Path(settings.MEDIA_ROOT).resolve())
+        response["X-Accel-Redirect"] = f"{settings.ST_X_ACCEL_PREFIX}/{inside}"
         response["Content-Type"] = obj.mime or mimetypes.guess_type(obj.filename)[0] or ""
         response["Content-Disposition"] = f'inline; filename="{obj.filename}"'
         return response
 
-    path = Path(settings.MEDIA_ROOT) / obj.storage_path
     if not path.is_file():
         raise Http404
     return FileResponse(path.open("rb"), content_type=obj.mime, filename=obj.filename)
