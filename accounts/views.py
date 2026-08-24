@@ -75,10 +75,11 @@ def profile_detail(request, pk):
 class Login(auth_views.LoginView):
     """The stopgap of D-26, until the OIDC flow exists.
 
-    Nothing here creates an account: enrolment does, and only enrolment (D-22).
-    A person who is not enrolled has no row to authenticate against, which is
-    why there is no "refused" page on this path -- the refusal is a failed
-    login, indistinguishable from a wrong password, and deliberately so.
+    Nothing here creates an account. Under D-31 the OIDC path does, on first
+    login; this stopgap does not, so a person with no row has nothing to
+    authenticate against -- which is why there is no "refused" page on *this*
+    path. The refusal is a failed login, indistinguishable from a wrong
+    password, and deliberately so.
     """
 
     template_name = "accounts/login.html"

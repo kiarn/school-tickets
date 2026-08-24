@@ -6,9 +6,11 @@ Django's own ``ModelBackend`` cannot do this job here: ``USERNAME_FIELD`` is
 never logged in through Keycloak -- that is, everybody, today. So the lookup
 has to be by ``cn``, the identifier a person actually knows.
 
-**This backend does not decide who may enter.** Enrolment does (D-22): there is
-no sign-up, no account creation, no first-login provisioning. It only checks
-that somebody who is already enrolled is who they say they are.
+**This backend does not decide who may enter.** It only checks that somebody
+who already has a row is who they say they are: no sign-up, no account
+creation, no provisioning. Under D-31 the provisioning exists, but it belongs
+to the OIDC path -- a password typed here can only ever answer for an account
+that is already there.
 """
 
 import logging

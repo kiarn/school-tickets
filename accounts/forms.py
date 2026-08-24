@@ -89,8 +89,8 @@ class LoginForm(forms.Form):
             # "wrong password" are the same sentence, or the form becomes a way
             # of asking who is enrolled. An account that has been removed or
             # anonymised lands here too, and that is the intended answer --
-            # access is by explicit enrolment (D-22), and losing it is not an
-            # error to explain.
+            # this path serves accounts that already exist, and losing access
+            # is not an error to explain.
             raise forms.ValidationError(
                 _("Wrong login or password, or this account has no access."),
                 code="invalid_login",

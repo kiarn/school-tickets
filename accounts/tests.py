@@ -1,13 +1,14 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Profiles, and the language preference that had nowhere to live (D-24)."""
 
+from django.contrib import admin as django_admin
 from django.core.cache import cache
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from accounts import backends
 from accounts.authz import Role
-from accounts.models import School, User
+from accounts.models import AuditLog, School, User
 from badges.models import Badge, BadgeAward
 
 
@@ -332,3 +333,95 @@ class AdminRoleTests(TestCase):
         request = RequestFactory().get("/admin/")
         request.user = self.person("pupil", Role.MEMBER)
         self.assertFalse(django_admin.site.has_permission(request))
+
+
+class AdminEnrolmentTests(TestCase):
+    """What ``/admin/`` may be asked about a person, and what it may not.
+
+    The bug at the root of these tests was silent and total: the change page
+    rendered ``password`` as an ordinary text box, so a teacher resetting
+    somebody's password wrote it into the column unhashed and locked the
+    account out of an application that then said nothing about it.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.school = School.objects.create(slug="default-school", name="Lycee")
+        cls.boss = User.objects.enroll(school=cls.school, cn="boss", role=Role.ADMIN)
+
+    def setUp(self):
+        self.client.force_login(self.boss)
+
+    def test_enrolling_asks_for_a_login_and_a_role_and_nothing_else(self):
+        page = self.client.get(reverse("admin:accounts_user_add"))
+        self.assertEqual(list(page.context["adminform"].form.fields), ["cn", "role"])
+
+    def test_the_change_page_never_offers_a_password_or_the_superuser_flag(self):
+        page = self.client.get(
+            reverse("admin:accounts_user_change", args=[self.boss.pk])
+        )
+        offered = set(page.context["adminform"].form.fields)
+        # `is_superuser` is derived from the role (D-27): a checkbox for it
+        # would be overwritten by save() the moment it was ticked.
+        self.assertFalse(
+            offered & {"password", "is_superuser", "groups", "user_permissions"}
+        )
+
+    def test_the_directory_and_the_person_own_their_own_fields(self):
+        readonly = self.client.get(
+            reverse("admin:accounts_user_change", args=[self.boss.pk])
+        ).context["adminform"].model_admin.get_readonly_fields(None, self.boss)
+        for field in ("display_name", "email", "avatar_url", "oidc_sub",
+                      "language", "theme"):
+            self.assertIn(field, readonly)
+
+    def test_an_enrolment_made_here_is_the_same_one_manage_py_makes(self):
+        self.client.post(
+            reverse("admin:accounts_user_add"), {"cn": "neu", "role": Role.MEMBER}
+        )
+        person = User.objects.get(cn="neu")
+        self.assertEqual(person.school, self.school)
+        self.assertEqual(person.enrolled_by, self.boss)
+        self.assertIsNotNone(person.enrolled_at)
+        # No password, rather than one nobody can use: `manage.py set_password`
+        # grants it, until OIDC (D-26).
+        self.assertFalse(person.has_usable_password())
+
+    def test_enrolling_and_changing_a_role_both_reach_the_audit_log(self):
+        self.client.post(
+            reverse("admin:accounts_user_add"), {"cn": "neu", "role": Role.MEMBER}
+        )
+        person = User.objects.get(cn="neu")
+        entry = AuditLog.objects.get(action=AuditLog.Action.ENROLL)
+        self.assertEqual((entry.actor, entry.target_id), (self.boss, person.pk))
+
+        self.client.post(
+            reverse("admin:accounts_user_change", args=[person.pk]),
+            {"cn": "neu", "role": Role.ADMIN, "is_active": "on"},
+        )
+        entry = AuditLog.objects.get(action=AuditLog.Action.ROLE_CHANGE)
+        self.assertEqual(entry.payload, {"from": Role.MEMBER, "to": Role.ADMIN})
+        person.refresh_from_db()
+        self.assertTrue(person.is_superuser)
+
+    def test_a_second_enrolment_under_the_same_login_is_a_sentence_not_a_500(self):
+        User.objects.enroll(school=self.school, cn="neu", role=Role.MEMBER)
+        page = self.client.post(
+            reverse("admin:accounts_user_add"), {"cn": "neu", "role": Role.MEMBER}
+        )
+        self.assertEqual(page.status_code, 200)
+        self.assertFormError(page.context["adminform"].form, "cn",
+                             "neu is already enrolled.")
+
+    def test_a_bound_account_keeps_its_cn_and_a_tombstone_keeps_everything(self):
+        person = User.objects.enroll(school=self.school, cn="neu", role=Role.MEMBER)
+        admin_class = django_admin.site._registry[User]
+        # Correctable while it is only a claim somebody typed.
+        self.assertNotIn("cn", admin_class.get_readonly_fields(None, person))
+
+        person.bind_oidc_sub("sub-123")
+        self.assertIn("cn", admin_class.get_readonly_fields(None, person))
+
+        person.anonymize()
+        for field in ("cn", "role", "is_active"):
+            self.assertIn(field, admin_class.get_readonly_fields(None, person))

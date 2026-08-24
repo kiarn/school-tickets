@@ -5,6 +5,14 @@ On a fresh install nobody is enrolled: nobody can log in, so nobody can enrol
 anybody. This command is the first step after installing the package.
 
     manage.py enroll --cn arnaud --role admin
+
+D-31 narrowed what enrolling means without changing a line of this command.
+Access no longer comes from here -- whoever Keycloak authenticates gets an
+account, `reporter` by default. What this still does, and nothing else does,
+is hand out a role **above** that default: the repair team, and the first
+administrator. The bootstrap argument above holds all the more for it, since
+the first person to log in would be a reporter with nobody able to promote
+them.
 """
 
 from django.conf import settings
@@ -16,7 +24,7 @@ from accounts.models import AuditLog, School, User
 
 
 class Command(BaseCommand):
-    help = "Enrol an account, the only way to gain access to the application (D-22)."
+    help = "Create an account and give it a role, before its first login (D-22, D-31)."
 
     def add_arguments(self, parser):
         parser.add_argument("--cn", required=True, help="linuxmuster login")

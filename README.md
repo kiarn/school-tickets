@@ -154,11 +154,25 @@ artefact, which is why the paths resolve to nothing in a fresh clone.
 
 ## Not done yet
 
+Three of these wait on the same thing and are meant to be done in one pass, the
+day there are credentials for Keycloak and for lmnapi: the OIDC backend, the
+lmnapi adapter, and the account cleanup that D-31 makes urgent. None of them can
+be written honestly before somebody has read a real response from either system
+-- which is the whole lesson of `rows_from_api` standing there raising
+`NotImplementedError` rather than guessing.
+
 - **OIDC.** A local password login stands in for it (D-26), and
-  `bind_oidc_sub()` and the enrolment rule are written; the Keycloak backend
-  and the refusal page are not (D-05, D-22). Two things wait on it: binding a
-  `sub` on first login, and a page that tells somebody who authenticated but
-  was never enrolled what happened.
+  `bind_oidc_sub()` is written; the Keycloak backend is not (D-05). What it
+  has to do is settled, though, and it is no longer a gate. Whoever the
+  provider authenticates gets an account, `reporter` by default (D-31): the
+  filter deciding who may authenticate at all belongs in the Keycloak client,
+  where each school's administrator sets it and owns the consequence. First
+  login matches on `cn` and has four answers -- no row, enrol one; a row with
+  no `sub`, bind it; a row already bound, let them in; **a deactivated row,
+  refuse**. That last branch is the only one that still needs a page, and it
+  is the reason deactivating somebody keeps meaning something. Everyone else
+  lands on the ticket list they can already read, with the `+` in the corner,
+  which is why there is no landing page to build.
 - **The lmnapi adapter.** The reconciliation engine is written and tested, and
   `sync_parc --from-file` exercises it end to end; only
   `parc/sources.py:rows_from_api` is unwritten -- it stands there and raises
@@ -168,24 +182,60 @@ artefact, which is why the paths resolve to nothing in a fresh clone.
 - **A holiday calendar.** The worker will notify -- and sweep the estate --
   during the school holidays. Noise, not damage; the same data answers both
   (D-20, D-28).
-- **End-of-year certificate, GDPR erasure.** `User.anonymize()` is written and
-  tested, down to the badge rule of R-17; nothing calls it yet -- no screen, no
-  command, not even an admin action. The certificate has no code at all: it
-  reads badges and assignments, which are in place.
+- **End-of-year certificate, account cleanup, GDPR erasure.** Three things that
+  are one thing: they all happen in July, and they happen in an order.
+  `User.anonymize()` is written and tested, down to the badge rule of R-17;
+  nothing calls it yet -- no screen, no command, not even an admin action. The
+  certificate has no code at all: it reads badges and assignments, which are in
+  place. The cleanup has none either, and D-31 is what makes it urgent -- an
+  account now appears the first time somebody logs in, and nothing ever says
+  they left. D-32 settles its shape: an administrator presses a button, the
+  application asks lmnapi which of the `cn` **it already holds** no longer
+  exist, and proposes -- never applies. The proposal writes itself, because
+  three `PROTECT` foreign keys (`Ticket.created_by`, `Comment.author`,
+  `Attachment.uploaded_by`) split the candidates in two: an account that never
+  wrote anything is deleted outright, one that did is anonymised. The order is
+  the trap: `anonymize()` drops the badges the certificate is generated from,
+  so certificates come first. Waiting on the lmnapi endpoint, whose semantics
+  are Q-08 -- sophomorix moves leavers rather than deleting them, so "this `cn`
+  exists" and "this person is still here" are not the same question.
 - **A comment marked as the resolution.** Nothing carries one today: a
   `Comment` has a body and an author, a `Ticket` has `resolved_by` and
   `resolved_at`, and the two are not tied together. Closing a ticket therefore
   costs nothing and teaches nothing, and the next person to meet the same fault
-  reads twenty notes to find what worked. The habit is as much the point as the
-  feature.
+  reads twenty notes to find what worked. The mark will hang off the ticket, as
+  a `resolution_comment` beside `resolved_by`, and resolving will **offer** it
+  without ever requiring it: a mandatory field teaches people to type "ok", and
+  some tickets legitimately have no resolution to write -- a duplicate, a false
+  alarm, a machine replaced. Showing the gap is the lever, not blocking the
+  form (D-12).
+- **Re-tagging a ticket.** Tags themselves are managed in the Django admin,
+  but a ticket's tags can be set only when it is opened: there is no
+  `t/<pk>/tags/` route beside `status`, `claim`, `assignees` and `visibility`.
+  The admin is no fallback either, and for a reason worth writing down: it
+  drops every M2M that goes through an explicit model, so `TicketAdmin` has an
+  inline for `TicketAssignee` and nothing at all for `TicketTag` -- the
+  application's own `TicketForm` does carry `tags`, the admin's cannot. A
+  ticket tagged wrongly stays that way. `Tag.color` is a dead column while we
+  are here: the admin asks for it, `seed_demo` fills it with DaisyUI names,
+  and both templates that render a tag write `badge badge-outline` flat.
+- **Tags versus the Django admin.** Accounts are settled -- the admin asks for
+  a `cn` and a role and nothing else, the directory owns the identity (D-22),
+  the profile page owns the preferences, and enrolments and role changes reach
+  the audit log. Tags are not: they live in the admin alone, under a bare
+  registration with no columns, no search and no school in sight, and their
+  `slug` is typed by hand although `tickets/views.py` filters on it -- so a
+  typo makes an entry in the filter dropdown that matches nothing and says
+  nothing. What the application should take over here is still open.
 - **A configurable title and logo.** `school-tickets` is written into
   `templates/base.html` (the `<title>` and the header),
   `templates/accounts/login.html` and `templates/notifications/sw.js`. Every
-  school wants its own acronym and crest, the login page included -- and login
-  renders before authentication, so the setting cannot hang off the `School`
-  row: it belongs to the instance's configuration. The same asset would give
-  the application a favicon and the Push notification an icon, neither of which
-  exists.
+  school wants its own acronym and crest, the login page included. One instance
+  serves one school -- `school_id` exists to avoid a hardcoded path, not to
+  promise multi-school management (D-06) -- so this is instance configuration,
+  and nothing rendered before login needs to know which school it is. The same
+  asset would give the application a favicon and the Push notification an icon,
+  neither of which exists.
 
 ## Licence
 
