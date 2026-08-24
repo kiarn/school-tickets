@@ -2,11 +2,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Report class names the templates use and the stylesheet does not define.
 
-Written on 2026-08-24, after this exact failure went unnoticed for two days:
-``bg-base-100``, ``text-base-content`` and every other daisyUI colour utility
-produced no CSS at all, because D-18 does without ``@plugin "daisyui"`` and
-nothing had registered those names with Tailwind (fixed in ``assets/app.css``).
-
 The failure mode is what makes the check worth having: **an unknown class is
 not an error**. Tailwind drops it, the browser ignores it, the page renders
 without it, and nothing anywhere says a word. The same silence covers a class
@@ -30,7 +25,13 @@ CSS = ROOT / "static" / "app.css"
 TEMPLATES = ROOT / "templates"
 
 #: Django template syntax lands inside class="..." and is not a class name.
-TEMPLATE_SYNTAX = re.compile(r"[{}|'\"]|^(if|else|elif|endif|not|and|or|==|!=)$|\.\w+$|^\w+\.")
+#: Tags go first, taking their conditions with them -- the literal text they
+#: wrap is a class name and stays.
+TEMPLATE_TAG = re.compile(r"{%.*?%}", re.S)
+#: A variable, on the other hand, leaves a hole in the middle of a token. Such
+#: a name is invisible to Tailwind too, so it is skipped rather than reported.
+TEMPLATE_VAR = re.compile(r"{{.*?}}", re.S)
+HOLE = "\x00"
 #: Characters Tailwind escapes with a backslash in the generated selector.
 ESCAPED = set(":./[]()%,#!")
 
@@ -51,8 +52,9 @@ def main() -> int:
     used = {}
     for template in sorted(TEMPLATES.rglob("*.html")):
         for match in re.finditer(r'class="([^"]*)"', template.read_text(), re.S):
-            for token in match.group(1).split():
-                if "{" in token or "}" in token or TEMPLATE_SYNTAX.search(token):
+            attribute = TEMPLATE_VAR.sub(HOLE, TEMPLATE_TAG.sub(" ", match.group(1)))
+            for token in attribute.split():
+                if HOLE in token:
                     continue
                 used.setdefault(token, set()).add(template.relative_to(ROOT))
 

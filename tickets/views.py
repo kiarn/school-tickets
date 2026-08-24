@@ -25,7 +25,9 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
+from django.core.paginator import Paginator
 from django.db import transaction
+from django.db.models import Case, IntegerField, Prefetch, Q, When
 from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -42,28 +44,125 @@ from accounts.authz import (
 )
 from accounts.models import AuditLog, User
 from notifications import events
-from parc.models import Device
+from parc.models import Device, Room
 
 from . import attachments as photos
 from .forms import CommentForm, TicketForm, VisibilityForm
-from .models import Attachment, Ticket, TicketAssignee
+from .models import Attachment, Comment, Tag, Ticket, TicketAssignee
 
 
 def _ticket_or_404(request, pk):
     return get_object_or_404(Ticket.objects.visible_to(request.user), pk=pk)
 
 
+#: The list offers work views, not a status picker. Nothing here answers
+#: "show me everything": the archive is reached through a room, never by
+#: scrolling past it.
+VIEWS = ("open", "in_progress", "urgent", "mine")
+DEFAULT_VIEW = "open"
+ACTIVE = (Ticket.Status.OPEN, Ticket.Status.IN_PROGRESS)
+PAGE_SIZE = 20
+
+#: Urgent first, in every view. Ordering on ``priority`` itself sorts
+#: alphabetically -- high, low, normal -- which reads as correct until a `low`
+#: turns up. Annotated rather than passed to ``order_by`` directly: the
+#: expression then sits in the SELECT list, which DISTINCT queries require.
+PRIORITY_RANK = Case(
+    When(priority=Ticket.Priority.HIGH, then=0),
+    When(priority=Ticket.Priority.NORMAL, then=1),
+    default=2,
+    output_field=IntegerField(),
+)
+
+
 @login_required
 def ticket_list(request):
+    view = request.GET.get("view") or DEFAULT_VIEW
+    # An unknown view, or "mine" asked by somebody who repairs nothing, falls
+    # back to the default. Not a 404: no object is being hidden here, and an
+    # error page would be a strange answer to a mistyped query string.
+    if view not in VIEWS or (view == "mine" and not can_work_on(request.user)):
+        view = DEFAULT_VIEW
+
     tickets = (
         Ticket.objects.visible_to(request.user)
         .select_related("room", "created_by")
         .prefetch_related("tags")
     )
-    status = request.GET.get("status")
-    if status:
-        tickets = tickets.filter(status=status)
-    return render(request, "tickets/list.html", {"tickets": tickets})
+
+    # A search reaches the archive whether or not the box is ticked: "how did we
+    # fix this last time" is answered by a resolved ticket, so restricting the
+    # statuses here would silence the one case the search exists for.
+    search = request.GET.get("q", "").strip()
+    closed = request.GET.get("closed") == "1" or bool(search)
+    if not closed:
+        tickets = tickets.filter(
+            status__in=[Ticket.Status.OPEN] if view == "open"
+            else [Ticket.Status.IN_PROGRESS] if view == "in_progress"
+            else ACTIVE
+        )
+    if view == "urgent":
+        tickets = tickets.filter(priority=Ticket.Priority.HIGH)
+    if view == "mine":
+        tickets = tickets.filter(assignees=request.user)
+
+    room = request.GET.get("room")
+    if room and room.isdigit():
+        tickets = tickets.filter(room_id=room)
+    else:
+        room = ""
+
+    tag = request.GET.get("tag") or ""
+    if tag:
+        tickets = tickets.filter(tags__slug=tag)
+
+    if search:
+        # Comments are searched, and they are the reason this exists: the note
+        # saying what was tried lives there, not in the description. The join
+        # multiplies rows, which the DISTINCT of visible_to() already absorbs.
+        tickets = tickets.filter(
+            Q(title__icontains=search)
+            | Q(description__icontains=search)
+            | Q(comments__body__icontains=search)
+        )
+        # Carry the matching notes along, so a hit inside a thread shows what
+        # it matched instead of sending the reader ticket by ticket.
+        tickets = tickets.prefetch_related(
+            Prefetch(
+                "comments",
+                queryset=Comment.objects.filter(body__icontains=search).order_by(
+                    "created_at"
+                ),
+                to_attr="matches",
+            )
+        )
+
+    tickets = tickets.annotate(priority_rank=PRIORITY_RANK).order_by(
+        "priority_rank", "-created_at"
+    )
+
+    page = Paginator(tickets, PAGE_SIZE).get_page(request.GET.get("page"))
+    rooms = Room.objects.filter(school=request.user.school, is_active=True).order_by(
+        "sort_key", "name"
+    )
+    return render(
+        request,
+        "tickets/list.html",
+        {
+            "page": page,
+            "tickets": page.object_list,
+            "view": view,
+            "closed": closed,
+            "search": search,
+            "rooms": rooms,
+            "tags": Tag.objects.filter(school=request.user.school).order_by("name"),
+            "selected_room": rooms.filter(pk=room).first() if room else None,
+            "selected_tag": Tag.objects.filter(
+                school=request.user.school, slug=tag
+            ).first(),
+            "can_work": can_work_on(request.user),
+        },
+    )
 
 
 @login_required

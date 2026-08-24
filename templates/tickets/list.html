@@ -5,27 +5,73 @@
 
 {% block content %}
 
-{% comment %} The status filter is the only navigation this screen has, so it stays put
-   while the list scrolls. `top-16` clears the sticky navbar above it. {% endcomment %}
-<nav class="tabs tabs-box filter-tabs sticky top-16 z-20 mb-3 bg-base-100 shadow-sm overflow-x-auto flex-nowrap"
-     aria-label="{% translate 'Filter by status' %}">
-    <a href="{% url 'tickets:list' %}"
-       class="tab whitespace-nowrap {% if not request.GET.status %}tab-active{% endif %}">
-        {% translate "All" %}
-    </a>
-    <a href="?status=open"
-       class="tab whitespace-nowrap {% if request.GET.status == 'open' %}tab-active{% endif %}">
+{% comment %} Work views, not a status picker: each tab answers "what do I do now?".
+   Sticky, because it is the only navigation this screen has. {% endcomment %}
+<div class="flex items-center gap-2 sticky top-16 z-20 bg-base-200 py-2">
+<nav class="tabs tabs-box filter-tabs flex-1 min-w-0 bg-base-100 shadow-sm overflow-x-auto flex-nowrap"
+     aria-label="{% translate 'Views' %}">
+    <a href="{% querystring view='open' page=None %}"
+       class="tab whitespace-nowrap {% if view == 'open' %}tab-active{% endif %}">
         {% translate "Open" %}
     </a>
-    <a href="?status=in_progress"
-       class="tab whitespace-nowrap {% if request.GET.status == 'in_progress' %}tab-active{% endif %}">
+    <a href="{% querystring view='in_progress' page=None %}"
+       class="tab whitespace-nowrap {% if view == 'in_progress' %}tab-active{% endif %}">
         {% translate "In progress" %}
     </a>
-    <a href="?status=resolved"
-       class="tab whitespace-nowrap {% if request.GET.status == 'resolved' %}tab-active{% endif %}">
-        {% translate "Resolved" %}
+    <a href="{% querystring view='urgent' page=None %}"
+       class="tab whitespace-nowrap {% if view == 'urgent' %}tab-active{% endif %}">
+        {% translate "Urgent" %}
     </a>
+    {% if can_work %}
+        <a href="{% querystring view='mine' page=None %}"
+           class="tab whitespace-nowrap {% if view == 'mine' %}tab-active{% endif %}">
+            {% translate "Mine" %}
+        </a>
+    {% endif %}
 </nav>
+
+{% comment %} Outside the scrolling strip on purpose: on a narrow screen the tabs overflow,
+   and a control you have to scroll to reach is a control you do not use. {% endcomment %}
+<button type="button" class="btn btn-square btn-ghost bg-base-100 shadow-sm shrink-0"
+        onclick="filter_modal.showModal()" aria-label="{% translate 'Filters' %}">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+         stroke-linecap="round" stroke-linejoin="round" class="size-5" aria-hidden="true">
+        <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+    </svg>
+</button>
+</div>
+
+{% comment %} Only when something is filtered: an empty row would cost a line of screen on
+   every visit. Each chip is its own way out -- a filter you cannot see is a list
+   you no longer understand. {% endcomment %}
+{% if search or selected_room or selected_tag or closed %}
+<div class="flex flex-wrap items-center gap-1.5 mb-3">
+    {% if search %}
+        <a href="{% querystring q=None page=None %}" class="badge badge-neutral gap-1">
+            « {{ search }} » <span aria-hidden="true">✕</span>
+            <span class="sr-only">{% translate "Remove this filter" %}</span>
+        </a>
+    {% endif %}
+    {% if selected_room %}
+        <a href="{% querystring room=None page=None %}" class="badge badge-neutral gap-1">
+            {{ selected_room.name }} <span aria-hidden="true">✕</span>
+            <span class="sr-only">{% translate "Remove this filter" %}</span>
+        </a>
+    {% endif %}
+    {% if selected_tag %}
+        <a href="{% querystring tag=None page=None %}" class="badge badge-neutral gap-1">
+            {{ selected_tag.name }} <span aria-hidden="true">✕</span>
+            <span class="sr-only">{% translate "Remove this filter" %}</span>
+        </a>
+    {% endif %}
+    {% if closed and not search %}
+        <a href="{% querystring closed=None page=None %}" class="badge badge-neutral gap-1">
+            {% translate "Closed included" %} <span aria-hidden="true">✕</span>
+            <span class="sr-only">{% translate "Remove this filter" %}</span>
+        </a>
+    {% endif %}
+</div>
+{% endif %}
 
 <ul class="flex flex-col gap-2 list-none p-0 m-0">
     {% for ticket in tickets %}
@@ -35,21 +81,102 @@
             <div class="card-body items-center text-center py-10 gap-3">
                 <p class="text-base font-medium">{% translate "No visible ticket." %}</p>
                 <p class="text-sm opacity-60 max-w-xs">
-                    {% if request.GET.status %}
-                        {% translate "Nothing under this filter. Try “All”." %}
+                    {% if search %}
+                        {% translate "No ticket and no note mentions that." %}
+                    {% elif selected_room or selected_tag %}
+                        {% translate "Nothing under these filters." %}
+                    {% elif view == 'mine' %}
+                        {% translate "Nothing is assigned to you right now." %}
+                    {% elif view == 'urgent' %}
+                        {% translate "Nothing urgent. That is good news." %}
                     {% else %}
                         {% translate "Tickets you are allowed to read will appear here." %}
                     {% endif %}
                 </p>
-                {% if not request.GET.status %}
-                    <a href="{% url 'tickets:create' %}" class="btn btn-primary btn-sm">
-                        {% translate "Report a fault" %}
-                    </a>
-                {% endif %}
+                <a href="{% url 'tickets:create' %}" class="btn btn-primary btn-sm">
+                    {% translate "Report a fault" %}
+                </a>
             </div>
         </li>
     {% endfor %}
 </ul>
+
+{% comment %} Plain links: the archive of a room can run to several pages, and a list that
+   grows on scroll cannot be shared or returned to. {% endcomment %}
+{% if page.has_other_pages %}
+    <div class="flex items-center justify-between gap-2 mt-3 mb-20">
+        {% if page.has_previous %}
+            <a href="{% querystring page=page.previous_page_number %}" class="btn btn-sm">
+                {% translate "Previous" %}
+            </a>
+        {% else %}<span></span>{% endif %}
+
+        <span class="text-xs opacity-60">
+            {% blocktranslate with current=page.number total=page.paginator.num_pages %}Page {{ current }} of {{ total }}{% endblocktranslate %}
+        </span>
+
+        {% if page.has_next %}
+            <a href="{% querystring page=page.next_page_number %}" class="btn btn-sm">
+                {% translate "Next" %}
+            </a>
+        {% else %}<span></span>{% endif %}
+    </div>
+{% endif %}
+
+{% comment %} A GET form: the filters end up in the URL, so a list can be sent to somebody
+   else -- "look at what is open in A101" is a link, not a description. {% endcomment %}
+<dialog id="filter_modal" class="modal modal-bottom sm:modal-middle">
+    <div class="modal-box">
+        <h2 class="font-semibold text-lg mb-3">{% translate "Filters" %}</h2>
+        <form method="get" class="flex flex-col gap-3">
+            <input type="hidden" name="view" value="{{ view }}">
+
+            <label class="label" for="filter_q">{% translate "Search" %}</label>
+            <input type="search" id="filter_q" name="q" value="{{ search }}"
+                   class="input w-full" placeholder="{% translate 'A word from a note' %}">
+            <p class="text-xs opacity-60 -mt-2">
+                {% translate "Searches titles, descriptions and notes, resolved tickets included." %}
+            </p>
+
+            <label class="label" for="filter_room">{% translate "Room" %}</label>
+            <select id="filter_room" name="room" class="select w-full">
+                <option value="">{% translate "Any room" %}</option>
+                {% for room in rooms %}
+                    <option value="{{ room.pk }}"
+                            {% if selected_room.pk == room.pk %}selected{% endif %}>
+                        {{ room.name }}{% if room.building %} — {{ room.building }}{% endif %}
+                    </option>
+                {% endfor %}
+            </select>
+
+            <label class="label" for="filter_tag">{% translate "Tag" %}</label>
+            <select id="filter_tag" name="tag" class="select w-full">
+                <option value="">{% translate "Any tag" %}</option>
+                {% for tag in tags %}
+                    <option value="{{ tag.slug }}"
+                            {% if selected_tag.slug == tag.slug %}selected{% endif %}>
+                        {{ tag.name }}
+                    </option>
+                {% endfor %}
+            </select>
+
+            <label class="label cursor-pointer justify-start gap-2">
+                <input type="checkbox" name="closed" value="1" class="checkbox"
+                       {% if closed %}checked{% endif %}>
+                {% translate "Include resolved and cancelled" %}
+            </label>
+
+            <div class="modal-action">
+                <a href="{% querystring q=None room=None tag=None closed=None page=None %}"
+                   class="btn btn-ghost">{% translate "Clear" %}</a>
+                <button type="button" class="btn btn-ghost"
+                        onclick="filter_modal.close()">{% translate "Cancel" %}</button>
+                <button type="submit" class="btn btn-primary">{% translate "Apply" %}</button>
+            </div>
+        </form>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
 
 {% endblock %}
 

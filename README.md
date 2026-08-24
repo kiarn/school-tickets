@@ -172,6 +172,20 @@ artefact, which is why the paths resolve to nothing in a fresh clone.
   tested, down to the badge rule of R-17; nothing calls it yet -- no screen, no
   command, not even an admin action. The certificate has no code at all: it
   reads badges and assignments, which are in place.
+- **A comment marked as the resolution.** Nothing carries one today: a
+  `Comment` has a body and an author, a `Ticket` has `resolved_by` and
+  `resolved_at`, and the two are not tied together. Closing a ticket therefore
+  costs nothing and teaches nothing, and the next person to meet the same fault
+  reads twenty notes to find what worked. The habit is as much the point as the
+  feature.
+- **A configurable title and logo.** `school-tickets` is written into
+  `templates/base.html` (the `<title>` and the header),
+  `templates/accounts/login.html` and `templates/notifications/sw.js`. Every
+  school wants its own acronym and crest, the login page included -- and login
+  renders before authentication, so the setting cannot hang off the `School`
+  row: it belongs to the instance's configuration. The same asset would give
+  the application a favicon and the Push notification an icon, neither of which
+  exists.
 
 ## Licence
 

@@ -26,7 +26,7 @@ from accounts.authz import (
 from accounts.models import AuditLog, School, User
 from parc.models import Device, Room
 from tickets import attachments
-from tickets.models import Attachment, Comment, Ticket, TicketAssignee
+from tickets.models import Attachment, Comment, Tag, Ticket, TicketAssignee, TicketTag
 
 
 class VisibilityTests(TestCase):
@@ -716,3 +716,164 @@ class WriteTests(TestCase):
         mine = self.open_ticket(created_by=self.reporter, visibility=Visibility.ALL)
         response = self.client.get(reverse("tickets:detail", args=[mine.pk]))
         self.assertContains(response, reverse("tickets:status", args=[mine.pk]))
+
+
+class ListViewTests(TestCase):
+    """The list is the screen people actually use: what it hides matters."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.school = School.objects.create(slug="lycee2", name="Lycee")
+        cls.a101 = Room.objects.create(school=cls.school, name="A101", sort_key="1-101")
+        cls.b204 = Room.objects.create(school=cls.school, name="B204", sort_key="2-204")
+        cls.admin = User.objects.enroll(school=cls.school, cn="a", role=Role.ADMIN)
+        cls.member = User.objects.enroll(school=cls.school, cn="m", role=Role.MEMBER)
+        cls.reporter = User.objects.enroll(school=cls.school, cn="r", role=Role.REPORTER)
+        cls.tag = Tag.objects.create(school=cls.school, slug="hdmi", name="HDMI")
+
+        def ticket(title, *, status=Ticket.Status.OPEN, priority=Ticket.Priority.NORMAL,
+                   room=None, visibility=Visibility.TEAM, tags=()):
+            t = Ticket.objects.create(
+                school=cls.school, room=room or cls.a101, title=title, status=status,
+                priority=priority, visibility=visibility, created_by=cls.admin,
+            )
+            for tag in tags:
+                TicketTag.objects.create(ticket=t, tag=tag)
+            return t
+
+        cls.open_normal = ticket("open normal")
+        cls.open_high = ticket("open high", priority=Ticket.Priority.HIGH, tags=[cls.tag])
+        cls.working = ticket("in progress", status=Ticket.Status.IN_PROGRESS)
+        cls.done = ticket("resolved", status=Ticket.Status.RESOLVED, room=cls.b204)
+        cls.secret = ticket("admins only", visibility=Visibility.ADMINS)
+        cls.assigned = ticket("assigned", room=cls.b204)
+        TicketAssignee.objects.create(ticket=cls.assigned, user=cls.member)
+
+    def titles(self, user, query=""):
+        self.client.force_login(user)
+        response = self.client.get(reverse("tickets:list") + query)
+        self.assertEqual(response.status_code, 200)
+        return [t.title for t in response.context["tickets"]]
+
+    def test_default_view_is_open_only(self):
+        titles = self.titles(self.member)
+        self.assertIn("open normal", titles)
+        self.assertNotIn("in progress", titles)
+        self.assertNotIn("resolved", titles)
+
+    def test_urgent_view_keeps_high_priority_and_active_only(self):
+        self.assertEqual(self.titles(self.member, "?view=urgent"), ["open high"])
+
+    def test_high_priority_comes_first_in_every_view(self):
+        titles = self.titles(self.member)
+        self.assertEqual(titles[0], "open high")
+
+    def test_mine_is_for_those_who_repair(self):
+        self.assertEqual(self.titles(self.member, "?view=mine"), ["assigned"])
+
+    def test_a_reporter_asking_for_mine_lands_on_the_default_view(self):
+        self.client.force_login(self.reporter)
+        response = self.client.get(reverse("tickets:list") + "?view=mine")
+        self.assertEqual(response.context["view"], "open")
+
+    def test_the_mine_tab_is_absent_for_a_reporter(self):
+        self.client.force_login(self.reporter)
+        self.assertNotContains(self.client.get(reverse("tickets:list")), "view=mine")
+        self.client.force_login(self.member)
+        self.assertContains(self.client.get(reverse("tickets:list")), "view=mine")
+
+    def test_an_unknown_view_falls_back(self):
+        self.assertIn("open normal", self.titles(self.member, "?view=nonsense"))
+
+    def test_closed_are_reachable_but_never_by_default(self):
+        self.assertNotIn("resolved", self.titles(self.member, "?room=%d" % self.b204.pk))
+        self.assertIn(
+            "resolved", self.titles(self.member, "?room=%d&closed=1" % self.b204.pk)
+        )
+
+    def test_room_and_tag_narrow_the_list(self):
+        self.assertEqual(self.titles(self.member, "?tag=hdmi"), ["open high"])
+        self.assertNotIn("open normal", self.titles(self.member, "?room=%d" % self.b204.pk))
+
+    def test_no_filter_ever_widens_visibility(self):
+        # The admins-only ticket sits in A101 and carries no tag: neither the
+        # room filter nor "closed" may hand it to a member.
+        for query in ("", "?room=%d" % self.a101.pk, "?closed=1", "?view=urgent"):
+            self.assertNotIn("admins only", self.titles(self.member, query))
+        self.assertIn("admins only", self.titles(self.admin))
+
+    def test_a_bad_room_is_ignored_rather_than_crashing(self):
+        self.assertIn("open normal", self.titles(self.member, "?room=nonsense"))
+
+    def test_pagination_splits_the_archive(self):
+        for i in range(25):
+            Ticket.objects.create(
+                school=self.school, room=self.a101, title=f"bulk {i}",
+                visibility=Visibility.TEAM, created_by=self.admin,
+            )
+        # 25 bulk tickets plus the three open ones this class already has.
+        self.assertEqual(len(self.titles(self.member)), 20)
+        self.assertEqual(len(self.titles(self.member, "?page=2")), 8)
+
+
+class SearchTests(TestCase):
+    """The search exists for one question: how did we fix this last time?"""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.school = School.objects.create(slug="lycee3", name="Lycee")
+        cls.room = Room.objects.create(school=cls.school, name="C300")
+        cls.admin = User.objects.enroll(school=cls.school, cn="a3", role=Role.ADMIN)
+        cls.member = User.objects.enroll(school=cls.school, cn="m3", role=Role.MEMBER)
+
+        def ticket(title, **kwargs):
+            return Ticket.objects.create(
+                school=cls.school, room=cls.room, title=title,
+                created_by=cls.admin, **kwargs,
+            )
+
+        cls.solved = ticket(
+            "Beamer", status=Ticket.Status.RESOLVED, visibility=Visibility.TEAM
+        )
+        Comment.objects.create(
+            ticket=cls.solved, author=cls.admin,
+            body="Port 23 am Patchfeld nachgezogen, danach Link-LED.",
+        )
+        cls.secret = ticket("Confidential", visibility=Visibility.ADMINS)
+        Comment.objects.create(
+            ticket=cls.secret, author=cls.admin, body="Auch am Patchfeld gesehen.",
+        )
+        cls.plain = ticket("Maus fehlt", visibility=Visibility.TEAM)
+
+    def titles(self, user, query):
+        self.client.force_login(user)
+        response = self.client.get(reverse("tickets:list") + query)
+        return [t.title for t in response.context["tickets"]]
+
+    def test_a_word_from_a_note_finds_the_ticket(self):
+        self.assertEqual(self.titles(self.member, "?q=patchfeld"), ["Beamer"])
+
+    def test_a_search_reaches_resolved_tickets_without_asking(self):
+        # The default view is "open"; the answer is in a resolved thread, and
+        # the search would be useless if the status filter still applied.
+        self.assertNotIn("Beamer", self.titles(self.member, ""))
+        self.assertIn("Beamer", self.titles(self.member, "?q=beamer"))
+
+    def test_a_note_never_surfaces_a_ticket_one_may_not_read(self):
+        self.assertEqual(self.titles(self.member, "?q=patchfeld"), ["Beamer"])
+        self.assertEqual(
+            sorted(self.titles(self.admin, "?q=patchfeld")), ["Beamer", "Confidential"]
+        )
+
+    def test_the_title_is_searched_too(self):
+        self.assertEqual(self.titles(self.member, "?q=maus"), ["Maus fehlt"])
+
+    def test_the_matching_note_is_shown_on_the_card(self):
+        self.client.force_login(self.member)
+        response = self.client.get(reverse("tickets:list") + "?q=patchfeld")
+        self.assertContains(response, "Port 23 am Patchfeld")
+
+    def test_a_ticket_matching_by_title_carries_no_note(self):
+        self.client.force_login(self.member)
+        response = self.client.get(reverse("tickets:list") + "?q=maus")
+        self.assertEqual(response.context["tickets"][0].matches, [])
