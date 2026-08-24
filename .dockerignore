@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# What must never reach the build context -- and therefore never the image.
+.git
+.gitignore
+.venv
+laptop
+# The design journal is French and out of the repository (D-23). It has no
+# business in a distributed image either.
+specs
+*.sqlite3
+media
+staticfiles
+__pycache__
+**/__pycache__
+*.py[cod]
+.env
+docker/env/*.env
+# 107 MB, and only ever used to rebuild the stylesheet, which is versioned.
+tools/tailwindcss

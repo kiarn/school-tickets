@@ -6,6 +6,8 @@ __pycache__/
 *.py[cod]
 .venv/
 *.sqlite3
+# collectstatic output: generated at deploy time, in both channels.
+/staticfiles/
 /media/
 
 # D-18 is explicit and wins over convenience here: the fetched daisyUI CSS, the
@@ -14,4 +16,6 @@ __pycache__/
 # Only the Tailwind binary stays out -- the script pins its URL (D-18, step 5).
 /tools/tailwindcss
 .env
+# Real container environment files: the examples are versioned, these are not.
+/docker/env/*.env
 *.mo

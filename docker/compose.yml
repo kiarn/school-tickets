@@ -1,0 +1,90 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# The second installation channel (the .deb is the first). Four services, and
+# the split that matters is between `web` and `worker`: same image, different
+# environment file. Only the worker's file carries a secret.
+#
+#   docker compose -f docker/compose.yml up -d --build
+#
+# Read docker/README.md first: three of these values must be changed before
+# this is reachable by anybody.
+
+name: school-tickets
+
+services:
+  db:
+    image: mariadb:11.4
+    restart: unless-stopped
+    env_file: env/db.env
+    # utf8mb4 is not optional: comments carry emoji and utf8mb3 truncates them
+    # mid-character (D-03).
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  web:
+    image: school-tickets:local
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    restart: unless-stopped
+    command: ["web"]
+    env_file: env/web.env
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - media:/var/lib/school-tickets/media
+      - static:/app/staticfiles
+    expose:
+      - "8000"
+
+  worker:
+    # The same image, built once by `web`. No build section here on purpose:
+    # two build sections would build the same context twice.
+    image: school-tickets:local
+    restart: unless-stopped
+    command: ["worker"]
+    # THE line that keeps D-09 true in this channel. If you ever point this at
+    # web.env "to keep things simple", the web service gains the lmnapi host
+    # key and the VAPID private key, and the separation is gone -- silently,
+    # because nothing will fail.
+    env_file: env/worker.env
+    depends_on:
+      db:
+        condition: service_healthy
+      web:
+        condition: service_started
+    volumes:
+      # Read-only: the worker never writes an attachment, and saying so here
+      # costs nothing.
+      - media:/var/lib/school-tickets/media:ro
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      - web
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - static:/srv/static:ro
+      - media:/srv/media:ro
+    ports:
+      # Bound to the loopback: put your own TLS proxy in front of it. Change
+      # this to 0.0.0.0 only if you know what stands between it and the world.
+      - "127.0.0.1:8080:80"
+
+# Named, not bind mounts: `docker compose down -v` deletes them, and so does a
+# stray `docker volume prune`. The photos live in `media` and are kept for ever
+# (R-11) -- back it up, see docker/README.md.
+volumes:
+  db-data:
+  media:
+  static:
