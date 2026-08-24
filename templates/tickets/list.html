@@ -7,7 +7,7 @@
 
 {% comment %} The status filter is the only navigation this screen has, so it stays put
    while the list scrolls. `top-16` clears the sticky navbar above it. {% endcomment %}
-<nav class="tabs tabs-box sticky top-16 z-20 mb-3 bg-base-100 shadow-sm overflow-x-auto flex-nowrap"
+<nav class="tabs tabs-box filter-tabs sticky top-16 z-20 mb-3 bg-base-100 shadow-sm overflow-x-auto flex-nowrap"
      aria-label="{% translate 'Filter by status' %}">
     <a href="{% url 'tickets:list' %}"
        class="tab whitespace-nowrap {% if not request.GET.status %}tab-active{% endif %}">

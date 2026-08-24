@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later
  *
  * Service worker: displays a Push and opens what it is about. Nothing else --
- * no caching, no offline shell. See docs/09-notifications.md.
+ * no caching, no offline shell. See specs/09-notifications.md.
  *
  * Served from the site root by notifications.views.service_worker, because a
  * worker only controls pages below its own URL.

@@ -68,12 +68,14 @@
 [data-theme="light"] {
     --color-base-200: oklch(94% 0 0);
     --color-base-300: oklch(87% 0 0);
+    --tab-active-surface: oklch(90% 0 0);
 }
 
 [data-theme="dark"] {
     --color-base-100: oklch(29% 0.016 252.42);
     --color-base-200: oklch(18.5% 0.014 253.1);
     --color-base-300: oklch(14% 0.012 254.09);
+    --tab-active-surface: oklch(38% 0.016 252.42);
 }
 
 /* Unlayered: daisyUI's `.card` sits in `@layer utilities`, and an unlayered
@@ -139,4 +141,33 @@ textarea {
 .htmx-request .htmx-indicator,
 .htmx-request.htmx-indicator {
     opacity: 1;
+}
+
+/* Status filter: the selected segment is a filled block, edge to edge, rather
+ * than daisyUI's inset relief -- which is invisible once the strip and the
+ * active tab share `base-100`. Lighter than the strip in dark, darker in
+ * light. */
+.filter-tabs {
+    padding: 0;
+}
+
+.filter-tabs > .tab {
+    border-radius: 0;
+    border-style: none;
+}
+
+.filter-tabs > .tab:first-child {
+    border-start-start-radius: inherit;
+    border-end-start-radius: inherit;
+}
+
+.filter-tabs > .tab:last-child {
+    border-start-end-radius: inherit;
+    border-end-end-radius: inherit;
+}
+
+.filter-tabs > .tab-active {
+    background-color: var(--tab-active-surface);
+    color: var(--color-base-content);
+    box-shadow: none;
 }
