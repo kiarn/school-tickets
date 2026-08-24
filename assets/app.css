@@ -12,24 +12,17 @@
 
 /* --- daisyUI's colours, registered as Tailwind's (D-18) --------------------
  *
- * Found on 2026-08-24: `bg-base-100`, `text-base-content`, `border-primary`
- * and every other daisyUI colour utility used in the templates produced
- * NOTHING. The pages rendered without a single background of their own.
+ * Without `@plugin "daisyui"` -- which the standalone binary cannot load --
+ * Tailwind never learns these names, and `bg-base-100` is an unknown class,
+ * silently dropped. daisyUI's own components read `var(--color-primary)`
+ * directly, so they keep working and hide the hole.
  *
- * The cause is the whole point of D-18. `@plugin "daisyui"` is what normally
- * registers these names with Tailwind, and D-18 does without it -- the
- * standalone binary cannot load a JS plugin. daisyUI's component CSS reads
- * `var(--color-primary)` internally, so `.btn-primary` looked fine and hid the
- * hole: Tailwind never learnt the *names*, so `bg-primary` was just an unknown
- * class, silently dropped. Unknown classes are not an error in Tailwind.
+ * `inline` is required: without it Tailwind emits its own `:root` values and
+ * freezes the light theme whatever `[data-theme]` says. With it, the utility
+ * keeps the `var()` reference and resolves against the active theme block.
  *
- * `@theme inline` is the missing half. `inline` matters: without it Tailwind
- * would emit its own `:root` values for these variables and freeze the light
- * theme in place, `[data-theme="dark"]` or not. With it, the utility keeps the
- * `var()` reference and resolves against whichever theme block applies.
- *
- * A name is registered here and a utility is emitted only where a template
- * actually uses one, so the whole palette costs nothing to list.
+ * Listing the whole palette is free: a utility is emitted only where a
+ * template uses one.
  */
 @theme inline {
     --color-base-100: var(--color-base-100);
@@ -55,6 +48,38 @@
     --radius-box: var(--radius-box);
     --radius-field: var(--radius-field);
     --radius-selector: var(--radius-selector);
+}
+
+/* --- Surfaces ---------------------------------------------------------------
+ *
+ * daisyUI 5 leaves two lightness points between `base-100` (cards, navbar) and
+ * `base-200` (the page): 100% / 98% in light, 25.33% / 23.26% in dark. Too
+ * little to read outdoors on a phone.
+ *
+ * The page moves away from the cards; in dark the cards also lift, a dark
+ * surface reading as raised by being lighter rather than by its shadow. The
+ * hairline border is the half that survives sunlight and dark alike, where a
+ * shadow does not.
+ *
+ * These must come after the import above, and the selectors mirror daisyUI's
+ * own so that neither wins by specificity.
+ */
+:root,
+[data-theme="light"] {
+    --color-base-200: oklch(94% 0 0);
+    --color-base-300: oklch(87% 0 0);
+}
+
+[data-theme="dark"] {
+    --color-base-100: oklch(29% 0.016 252.42);
+    --color-base-200: oklch(18.5% 0.014 253.1);
+    --color-base-300: oklch(14% 0.012 254.09);
+}
+
+/* Unlayered: daisyUI's `.card` sits in `@layer utilities`, and an unlayered
+ * rule beats a layered one whatever the order. */
+.card {
+    border: var(--border, 1px) solid var(--color-base-300);
 }
 
 /* --- What actually decides the mobile rendering (D-18) ---------------------
