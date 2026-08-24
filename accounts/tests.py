@@ -23,7 +23,7 @@ class ProfileTests(TestCase):
             school=cls.school, cn="pupil2", role=Role.MEMBER, display_name="Nils"
         )
         cls.admin = User.objects.enroll(
-            school=cls.school, cn="admin", role=Role.ADMIN, display_name="Arnaud"
+            school=cls.school, cn="admin", role=Role.ADMIN, display_name="Admin"
         )
         cls.foreign_admin = User.objects.enroll(
             school=cls.other_school, cn="elsewhere", role=Role.ADMIN
@@ -213,7 +213,7 @@ class ThemeTests(TestCase):
     def setUpTestData(cls):
         cls.school = School.objects.create(slug="lycee", name="Lycee")
         cls.person = User.objects.enroll(
-            school=cls.school, cn="admin", role=Role.ADMIN, display_name="Arnaud"
+            school=cls.school, cn="admin", role=Role.ADMIN, display_name="Admin"
         )
 
     def test_no_preference_leaves_the_device_in_charge(self):

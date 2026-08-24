@@ -24,8 +24,8 @@ class Badge(models.Model):
     description = models.TextField(blank=True)
     icon = models.CharField(max_length=100, blank=True)
     category = models.CharField(max_length=100, blank=True)
-    # How many times this badge has been given, ever (R-17, answered
-    # 2026-08-24). It exists because an award is DELETED when its holder is
+    # How many times this badge has been given, ever (R-17). It exists
+    # because an award is DELETED when its holder is
     # anonymised: without a counter, an erasure would also erase the school's
     # own record that the badge had ever been earned. Not a leaderboard --
     # counting badges says nothing about which pupil holds them (D-10).

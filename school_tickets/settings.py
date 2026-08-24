@@ -141,10 +141,10 @@ ST_OPENING_WEEKDAYS = (0, 1, 2, 3, 4)
 # --- Notifications (specs/09-notifications.md) --------------------------------
 # A DIFFERENT window from the one above, and the difference is the point:
 # ST_OPENING_HOURS says when workstations are switched on, this says when a
-# teenager may decently be disturbed. Arnaud gives instructions from home in
-# the evening and pupils read on the bus, hence 20:00 rather than 18:00
-# (arrêté le 2026-08-24). Nothing here is urgent: what falls outside the window
-# waits for the morning, and stays readable in the application meanwhile.
+# teenager may decently be disturbed -- the application is read outside school
+# hours, hence 20:00 rather than 18:00. Nothing here is urgent: what falls
+# outside the window waits for the morning, and stays readable in the
+# application meanwhile.
 ST_NOTIFY_HOURS = (7, 20)
 ST_NOTIFY_WEEKDAYS = tuple(
     int(day) for day in os.environ.get("ST_NOTIFY_WEEKDAYS", "0,1,2,3,4").split(",") if day

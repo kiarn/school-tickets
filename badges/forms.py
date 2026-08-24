@@ -53,7 +53,7 @@ class AwardForm(forms.ModelForm):
         # Not sliced, and that is not an oversight: a sliced queryset still
         # renders its options, but `ModelChoiceField` validates by filtering
         # it, and filtering a slice is refused -- so every choice comes back
-        # "not a valid choice". Caught by a test on 2026-08-24.
+        # "not a valid choice".
         #
         # It does mean the list grows with the archive. The narrowing that
         # would make sense is by person -- the intervention that earned a badge

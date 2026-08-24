@@ -6,9 +6,9 @@ whom. That asymmetry was never written and nothing ever branched on it, so the
 two values were the same value under two names.
 
 The second half is the one to read twice: every account that held either role
-becomes a **Django superuser**. That is the decision, not a side effect --
-"an administrator of the school is an administrator of the database" (Arnaud,
-2026-08-24). It is also what makes ``has_perm()`` answer at all: ``is_staff``
+becomes a **Django superuser**. That is the decision, not a side effect: an
+administrator of the school is an administrator of the database. It is also
+what makes ``has_perm()`` answer at all: ``is_staff``
 followed the role while permissions did not, so an administrator could open
 ``/admin/`` and find it empty.
 """

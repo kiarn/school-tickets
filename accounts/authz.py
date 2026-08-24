@@ -48,7 +48,7 @@ def clearance(user) -> int:
 
     An anonymous or deactivated user reads nothing: the value returned sits
     above every existing visibility, so no ticket passes. There is no public
-    level (dropped on 2026-08-23, see specs/08-visibilite.md).
+    level (dropped, see specs/08-visibilite.md).
     """
     if not getattr(user, "is_authenticated", False) or not user.is_active:
         return Visibility.ALL + 10

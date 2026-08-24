@@ -21,7 +21,7 @@ class CatalogTests(TestCase):
             school=cls.school, cn="pupil", role=Role.MEMBER, display_name="Lea"
         )
         cls.admin = User.objects.enroll(
-            school=cls.school, cn="admin", role=Role.ADMIN, display_name="Arnaud"
+            school=cls.school, cn="admin", role=Role.ADMIN, display_name="Admin"
         )
         cls.local = Badge.objects.create(
             slug="lycee-hdmi", school=cls.school, name="First HDMI fault"
@@ -94,7 +94,7 @@ class AwardTests(TestCase):
             school=cls.school, cn="teacher", role=Role.REPORTER, display_name="Sam"
         )
         cls.admin = User.objects.enroll(
-            school=cls.school, cn="admin", role=Role.ADMIN, display_name="Arnaud"
+            school=cls.school, cn="admin", role=Role.ADMIN, display_name="Admin"
         )
         cls.badge = Badge.objects.create(
             slug="lycee-hdmi", school=cls.school, name="First HDMI fault"
@@ -153,7 +153,7 @@ class AwardTests(TestCase):
 
 
 class TallyTests(TestCase):
-    """R-17, answered on 2026-08-24: the award goes, the fact that it happened stays."""
+    """R-17: the award goes, the fact that it happened stays."""
 
     @classmethod
     def setUpTestData(cls):

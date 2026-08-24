@@ -143,10 +143,9 @@ class User(AbstractBaseUser, PermissionsMixin):
     def save(self, *args, **kwargs):
         """An administrator of the school is an administrator of the database.
 
-        Arnaud's rule, 2026-08-24 (D-27). Kept true here rather than at the one
-        call site that happens to create accounts today: a role changed from
-        the Django admin has to carry the flag with it, or the two drift and
-        the drift is invisible.
+        D-27. Kept here rather than at the one call site that creates accounts
+        today: a role changed from the Django admin has to carry the flag with
+        it, or the two drift invisibly.
         """
         fields = kwargs.get("update_fields")
         if fields is None or "role" in fields:
@@ -184,8 +183,8 @@ class User(AbstractBaseUser, PermissionsMixin):
         self.anonymized_at = timezone.now()
         self.set_unusable_password()
         self.save()
-        # Badges go with the name (R-17, answered by Arnaud on 2026-08-24), as
-        # assignments already did: a nominative recognition detached from its
+        # Badges go with the name (R-17), as assignments already did: a
+        # nominative recognition detached from its
         # name means nothing, and keeping it would keep a trace of the path of
         # somebody who asked to be erased. The school's own record survives in
         # Badge.award_count, which is why the stamping above happens FIRST --
