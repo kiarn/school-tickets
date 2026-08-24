@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from django import forms
-from django.conf import settings
 from django.contrib import admin, messages
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
@@ -11,19 +10,6 @@ from .models import AuditLog, School, User
 @admin.register(School)
 class SchoolAdmin(admin.ModelAdmin):
     list_display = ("slug", "name", "created_at")
-
-
-def _default_school():
-    """One instance serves one school (D-06), so the admin never asks which.
-
-    Resolved exactly as ``manage.py enroll`` resolves it, minus the
-    ``get_or_create``: reaching this code means somebody is logged into
-    ``/admin/``, which means an account exists, which means a school does.
-    """
-    return (
-        School.objects.filter(slug=settings.ST_DEFAULT_SCHOOL_SLUG).first()
-        or School.objects.first()
-    )
 
 
 class EnrolmentForm(forms.ModelForm):
@@ -58,7 +44,7 @@ class EnrolmentForm(forms.ModelForm):
 
     def clean_cn(self):
         cn = self.cleaned_data["cn"].strip()
-        school = _default_school()
+        school = School.objects.default()
         if school is None:
             raise forms.ValidationError(
                 _("No school exists yet: run `manage.py enroll` first.")
@@ -138,7 +124,7 @@ class UserAdmin(admin.ModelAdmin):
         if not change:
             # What ``UserManager.enroll()`` does, D-22: a row that exists
             # before its first login, with no password of its own.
-            obj.school = _default_school()
+            obj.school = School.objects.default()
             obj.enrolled_by = request.user
             obj.enrolled_at = timezone.now()
             obj.set_unusable_password()

@@ -10,12 +10,27 @@ from django.utils.translation import gettext_lazy as _
 from .authz import ADMIN_ROLES, Role
 
 
+class SchoolManager(models.Manager):
+    def default(self):
+        """The one school this instance serves (D-30).
+
+        Resolved as ``manage.py enroll`` resolves it, minus the
+        ``get_or_create``: every caller runs behind a login, which means an
+        account exists, which means a school does. The fallback on the first
+        row covers an instance whose ``ST_DEFAULT_SCHOOL`` was renamed after
+        the fact rather than at install time.
+        """
+        return self.filter(slug=settings.ST_DEFAULT_SCHOOL_SLUG).first() or self.first()
+
+
 class School(models.Model):
     """D-06: the school concept exists from the very first migration."""
 
     slug = models.SlugField(unique=True)
     name = models.CharField(max_length=200)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    objects = SchoolManager()
 
     def __str__(self):
         return self.name
@@ -55,8 +70,12 @@ class User(AbstractBaseUser, PermissionsMixin):
     # Pivot identity. NULL as long as an enrolled person has never logged in
     # (D-22); unique only when set.
     oidc_sub = models.CharField(max_length=255, unique=True, null=True, blank=True, default=None)
-    # Used for the initial match, once only. Cleared on anonymisation.
-    cn = models.CharField(max_length=150, blank=True)
+    # Used for the initial match, once only. **NULL** on a tombstone, and not
+    # the empty string: several erased people share a school, and a unique
+    # constraint counts every "" as the same value while it counts every NULL
+    # as its own. That is what lets the constraint below drop its condition --
+    # see the note there.
+    cn = models.CharField(max_length=150, blank=True, null=True, default=None)
 
     display_name = models.CharField(max_length=200, blank=True)
     email = models.EmailField(blank=True)
@@ -105,11 +124,18 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(
-                fields=["school", "cn"],
-                condition=models.Q(anonymized_at__isnull=True),
-                name="unique_cn_per_school_while_named",
-            )
+            # No condition, and it took a while to see why that matters. The
+            # rule wanted is "unique among the named", tombstones excepted --
+            # which reads as a condition on ``anonymized_at``, and a condition
+            # is a partial index. **MariaDB has none.** Django then emits a
+            # `check` warning and creates nothing: the constraint held in
+            # SQLite, under development and in the whole test suite, and was
+            # absent in production (D-03). The tests proved a guarantee the
+            # deployment did not have.
+            #
+            # Carrying the exception in the data instead of in the constraint
+            # costs one NULL and works identically on both engines.
+            models.UniqueConstraint(fields=["school", "cn"], name="unique_cn_per_school"),
         ]
 
     def __str__(self):
@@ -169,10 +195,16 @@ class User(AbstractBaseUser, PermissionsMixin):
     def anonymize(self) -> None:
         """Tombstone (D-11). The row survives, emptied.
 
-        Anonymising implies un-enrolling (D-22): without ``is_active = False``
-        and without clearing the ``sub``, the row would stay loginable.
+        Anonymising implies deactivating (D-22, redefined by D-31): without
+        ``is_active = False`` and without clearing the ``sub``, the row would
+        stay loginable.
+
+        The three deletions below are the ones specs/06-rgpd.md tabulates.
+        Only the first was ever written; the other two are listed in that
+        table as ``supprimé``, were described as done in two code comments,
+        and were not happening.
         """
-        self.cn = ""
+        self.cn = None
         self.display_name = ""
         self.language = ""
         self.theme = ""
@@ -190,6 +222,19 @@ class User(AbstractBaseUser, PermissionsMixin):
         # Badge.award_count, which is why the stamping above happens FIRST --
         # the receiver reads it to know not to decrement.
         self.badge_awards.all().delete()
+
+        # "Plus aucune trace d'affectation nominative" (doc 06). The comment on
+        # ``TicketAssignee.user`` claimed this already happened, and the one
+        # above says "as assignments already did": both were describing a
+        # cascade that only fires on a DELETE of the row, which a tombstone is
+        # precisely not.
+        self.tickets_assigned.clear()
+
+        # The device stops receiving, and -- the half that matters here -- the
+        # row stops holding a `user_agent`. "Pixel 7, Chrome 141" is device
+        # data about somebody who has just been erased, kept in the chapter
+        # that decides whether the project is allowed to run at all.
+        self.push_subscriptions.all().delete()
 
 
 class PushSubscription(models.Model):
@@ -212,6 +257,10 @@ class AuditLog(models.Model):
         OIDC_BIND = "oidc_bind", _("OIDC binding")
         ANONYMIZE = "anonymize", _("Anonymisation")
         BADGE_AWARD = "badge_award", _("Badge award")
+        # Its counterpart, and the asymmetry it closes was the telling one:
+        # giving a recognition was accounted for, taking one back was not --
+        # although that is the act somebody is owed an explanation for.
+        BADGE_REVOKE = "badge_revoke", _("Badge withdrawn")
         SYNC_DECISION = "sync_decision", _("Sync decision")
         # Moves and hostname changes apply without asking (doc 03); this is
         # what keeps them reconstructible afterwards.

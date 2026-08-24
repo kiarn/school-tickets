@@ -209,24 +209,17 @@ be written honestly before somebody has read a real response from either system
   some tickets legitimately have no resolution to write -- a duplicate, a false
   alarm, a machine replaced. Showing the gap is the lever, not blocking the
   form (D-12).
-- **Re-tagging a ticket.** Tags themselves are managed in the Django admin,
-  but a ticket's tags can be set only when it is opened: there is no
-  `t/<pk>/tags/` route beside `status`, `claim`, `assignees` and `visibility`.
-  The admin is no fallback either, and for a reason worth writing down: it
-  drops every M2M that goes through an explicit model, so `TicketAdmin` has an
-  inline for `TicketAssignee` and nothing at all for `TicketTag` -- the
-  application's own `TicketForm` does carry `tags`, the admin's cannot. A
-  ticket tagged wrongly stays that way. `Tag.color` is a dead column while we
-  are here: the admin asks for it, `seed_demo` fills it with DaisyUI names,
-  and both templates that render a tag write `badge badge-outline` flat.
-- **Tags versus the Django admin.** Accounts are settled -- the admin asks for
-  a `cn` and a role and nothing else, the directory owns the identity (D-22),
-  the profile page owns the preferences, and enrolments and role changes reach
-  the audit log. Tags are not: they live in the admin alone, under a bare
-  registration with no columns, no search and no school in sight, and their
-  `slug` is typed by hand although `tickets/views.py` filters on it -- so a
-  typo makes an entry in the filter dropdown that matches nothing and says
-  nothing. What the application should take over here is still open.
+- **Serving an attachment the admin invented.** `Attachment` is still a bare
+  registration, so `storage_path` is a text box, and `tickets/views.py` joins
+  it onto `MEDIA_ROOT`: a `../..` typed there reads any file the process can.
+  Only a superuser can type it, and a superuser has the database anyway, so
+  this is tidiness rather than a hole -- but an attachment is a consequence of
+  an upload, like a `Notification`, and deserves the same `has_add_permission
+  -> False`. Deleting one there also leaves the file on disk.
+- **Empty translation catalogues.** `locale/` holds no `.po` at all, so the
+  five catalogue badges shipped with the demo run their names through
+  `gettext()` and come back in English, next to a school badge in German.
+  Nothing is broken; nothing is translated either (D-15).
 - **A configurable title and logo.** `school-tickets` is written into
   `templates/base.html` (the `<title>` and the header),
   `templates/accounts/login.html` and `templates/notifications/sw.js`. Every

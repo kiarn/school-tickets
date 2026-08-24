@@ -195,7 +195,7 @@ class EnrolmentTests(TestCase):
         user.refresh_from_db()
         self.assertIsNone(user.oidc_sub)
         self.assertFalse(user.is_active)
-        self.assertEqual(user.cn, "")
+        self.assertIsNone(user.cn)
         self.assertIsNotNone(user.anonymized_at)
 
 

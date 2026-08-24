@@ -32,6 +32,36 @@ class Badge(models.Model):
     award_count = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        constraints = [
+            # `is_catalog` and `school NULL` say the same thing twice -- shared
+            # by every school, and translated through Crowdin (D-15) -- so they
+            # may not disagree. The Django admin used to let them: a badge
+            # flagged catalogue *and* attached to a school, or one attached to
+            # none while not being catalogue, which then showed up in every
+            # school's catalogue untranslated. Neither was reachable through
+            # `BadgeForm`, and neither was refused by anything.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(is_catalog=True, school__isnull=True)
+                    | models.Q(is_catalog=False, school__isnull=False)
+                ),
+                name="catalog_badge_has_no_school",
+            ),
+            # Not conditional, and that is the point: MariaDB has no partial
+            # index, and Django drops a conditional constraint there without a
+            # word -- it would hold in the tests and be absent in production
+            # (D-03). The cost is that two nameless badges in one school now
+            # collide; both forms require a name, so the case is theoretical.
+            #
+            # Catalogue badges escape it on both backends, `school` being NULL:
+            # their names come from a fixture shipped with the code, not from
+            # anybody typing.
+            models.UniqueConstraint(
+                fields=["school", "name"], name="unique_badge_name_per_school"
+            ),
+        ]
+
     def __str__(self):
         return self.label
 

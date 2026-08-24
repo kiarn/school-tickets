@@ -2,14 +2,17 @@
 """Profiles, and the language preference that had nowhere to live (D-24)."""
 
 from django.contrib import admin as django_admin
+from django.db import IntegrityError
 from django.core.cache import cache
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from accounts import backends
-from accounts.authz import Role
-from accounts.models import AuditLog, School, User
+from accounts.authz import Role, Visibility
+from accounts.models import AuditLog, PushSubscription, School, User
 from badges.models import Badge, BadgeAward
+from parc.models import Room
+from tickets.models import Ticket, TicketAssignee
 
 
 class ProfileTests(TestCase):
@@ -425,3 +428,103 @@ class AdminEnrolmentTests(TestCase):
         person.anonymize()
         for field in ("cn", "role", "is_active"):
             self.assertIn(field, admin_class.get_readonly_fields(None, person))
+
+
+class ErasureTests(TestCase):
+    """What `anonymize()` actually removes, against what doc 06 tabulates.
+
+    The table listed three deletions and the code performed one. Two code
+    comments described the missing ones as already done -- ``TicketAssignee``
+    said "Deleted on anonymisation", and `anonymize()` itself said badges go
+    "as assignments already did". Both were describing a cascade that fires on
+    a DELETE of the row, which a tombstone is precisely not.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.school = School.objects.create(slug="lycee", name="Lycee")
+        cls.room = Room.objects.create(school=cls.school, name="A101", sort_key="1-101")
+        cls.boss = User.objects.enroll(school=cls.school, cn="boss", role=Role.ADMIN)
+
+    def setUp(self):
+        self.pupil = User.objects.enroll(
+            school=self.school, cn="pupil", role=Role.MEMBER, display_name="Lena"
+        )
+        self.ticket = Ticket.objects.create(
+            school=self.school, room=self.room, title="Beamer",
+            visibility=Visibility.TEAM, created_by=self.boss,
+        )
+        TicketAssignee.objects.create(ticket=self.ticket, user=self.pupil)
+        BadgeAward.objects.create(
+            badge=Badge.objects.create(slug="lycee-x", school=self.school, name="X"),
+            user=self.pupil, awarded_by=self.boss,
+        )
+        PushSubscription.objects.create(
+            user=self.pupil, endpoint="https://push/x", p256dh="k", auth="a",
+            user_agent="Pixel 7, Chrome 141",
+        )
+
+    def test_no_named_assignment_is_left_behind(self):
+        self.pupil.anonymize()
+        self.assertFalse(TicketAssignee.objects.filter(user=self.pupil).exists())
+
+    def test_the_device_stops_receiving_and_stops_being_described(self):
+        """A `user_agent` is device data about somebody just erased."""
+        self.pupil.anonymize()
+        self.assertFalse(PushSubscription.objects.filter(user=self.pupil).exists())
+
+    def test_the_badge_goes_with_the_name(self):
+        self.pupil.anonymize()
+        self.assertFalse(BadgeAward.objects.filter(user=self.pupil).exists())
+
+    def test_what_the_table_says_to_keep_is_kept(self):
+        """The thread is the team's technical memory: it survives, unnamed."""
+        self.pupil.anonymize()
+        self.ticket.refresh_from_db()
+        self.assertTrue(Ticket.objects.filter(pk=self.ticket.pk).exists())
+        self.assertEqual(str(User.objects.get(pk=self.pupil.pk)), "Former member")
+
+
+class TombstoneUniquenessTests(TestCase):
+    """Why a tombstone's `cn` is NULL and not the empty string.
+
+    "Unique among the named" reads as a condition on `anonymized_at`, and a
+    condition is a partial index. MariaDB has none: Django warned and created
+    nothing, so the rule held in SQLite -- development, and this very suite --
+    and was absent in production (D-03). Carrying the exception in the data
+    instead behaves identically on both engines.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.school = School.objects.create(slug="lycee", name="Lycee")
+
+    def test_an_erased_account_keeps_no_cn_at_all(self):
+        person = User.objects.enroll(school=self.school, cn="lena", role=Role.MEMBER)
+        person.anonymize()
+        person.refresh_from_db()
+        self.assertIsNone(person.cn)
+
+    def test_a_school_may_bury_more_than_one_person(self):
+        """The case that forced the condition, and now needs none."""
+        for cn in ("lena", "jonas", "mira"):
+            User.objects.enroll(school=self.school, cn=cn, role=Role.MEMBER).anonymize()
+        self.assertEqual(User.objects.filter(cn__isnull=True).count(), 3)
+
+    def test_two_live_accounts_still_may_not_share_a_login(self):
+        User.objects.enroll(school=self.school, cn="lena", role=Role.MEMBER)
+        with self.assertRaises(IntegrityError):
+            User.objects.enroll(school=self.school, cn="lena", role=Role.MEMBER)
+
+    def test_the_constraint_carries_no_condition_so_mariadb_creates_it(self):
+        """The regression this whole change exists to prevent."""
+        constraint = next(
+            c for c in User._meta.constraints if c.name == "unique_cn_per_school"
+        )
+        self.assertIsNone(constraint.condition)
+
+    def test_a_login_freed_by_an_erasure_can_be_enrolled_again(self):
+        """The school reassigns a cn; the newcomer inherits no history (D-22)."""
+        User.objects.enroll(school=self.school, cn="lena", role=Role.MEMBER).anonymize()
+        newcomer = User.objects.enroll(school=self.school, cn="lena", role=Role.MEMBER)
+        self.assertEqual(newcomer.badge_awards.count(), 0)

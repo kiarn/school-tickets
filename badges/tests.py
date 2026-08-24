@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Badges (D-10, D-24). The tests that matter are the ones about what is NOT shown."""
 
+from django.db import IntegrityError
 from django.test import TestCase
 from django.urls import reverse
 
@@ -200,3 +201,166 @@ class TallyTests(TestCase):
         response = self.client.get(reverse("badges:catalog"))
         self.assertContains(response, "awarded once")
         self.assertNotContains(response, "Lea")
+
+
+class BadgeAdminTests(TestCase):
+    """The dividing line of D-15, enforced rather than merely intended.
+
+    The catalogue belongs to the project: its strings are `msgid`s shipped
+    with the code. A school's own badges belong to the school. The admin used
+    to let somebody build the two impossible things in between, and nothing --
+    no form, no constraint -- said no.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.school = School.objects.create(slug="default-school", name="Lycee")
+        cls.boss = User.objects.enroll(school=cls.school, cn="boss", role=Role.ADMIN)
+        cls.own = Badge.objects.create(
+            slug="default-school-hdmi", school=cls.school, name="HDMI"
+        )
+        cls.catalog = Badge.objects.create(
+            slug="first-linbo", school=None, is_catalog=True, name="First LINBO sync"
+        )
+
+    def setUp(self):
+        self.client.force_login(self.boss)
+
+    def test_creating_a_badge_asks_only_what_a_school_decides(self):
+        page = self.client.get(reverse("admin:badges_badge_add"))
+        self.assertEqual(
+            list(page.context["adminform"].form.fields),
+            ["name", "description", "icon", "category"],
+        )
+
+    def test_a_badge_made_here_is_the_school_s_own_and_never_shared(self):
+        self.client.post(
+            reverse("admin:badges_badge_add"),
+            {"name": "Werkstatt-Helfer", "description": "", "icon": "", "category": ""},
+        )
+        badge = Badge.objects.get(name="Werkstatt-Helfer")
+        self.assertEqual(badge.school, self.school)
+        self.assertFalse(badge.is_catalog)
+        # The school goes into the slug: two schools inventing the same name
+        # must not collide, `Badge.slug` being unique everywhere.
+        self.assertTrue(badge.slug.startswith("default-school-"))
+
+    def test_a_catalogue_badge_is_read_only_except_its_tally(self):
+        readonly = self.client.get(
+            reverse("admin:badges_badge_change", args=[self.catalog.pk])
+        ).context["adminform"].model_admin.get_readonly_fields(None, self.catalog)
+        # Its name is the msgid the .po files are keyed on: editing it here
+        # would silently orphan every translation of it.
+        for field in ("name", "description", "school", "is_catalog", "slug"):
+            self.assertIn(field, readonly)
+        self.assertNotIn("award_count", readonly)
+
+    def test_a_school_badge_keeps_its_text_editable(self):
+        readonly = self.client.get(
+            reverse("admin:badges_badge_change", args=[self.own.pk])
+        ).context["adminform"].model_admin.get_readonly_fields(None, self.own)
+        self.assertNotIn("name", readonly)
+        self.assertIn("school", readonly)
+
+    def test_the_database_refuses_a_catalogue_badge_attached_to_a_school(self):
+        with self.assertRaises(IntegrityError):
+            Badge.objects.create(
+                slug="hybrid", is_catalog=True, school=self.school, name="Hybrid"
+            )
+
+    def test_the_database_refuses_a_school_badge_attached_to_none(self):
+        """It would surface in every school's catalogue, untranslated."""
+        with self.assertRaises(IntegrityError):
+            Badge.objects.create(slug="orphan", is_catalog=False, school=None, name="Orphan")
+
+    def test_two_badges_of_one_school_may_not_share_a_name(self):
+        with self.assertRaises(IntegrityError):
+            Badge.objects.create(slug="hdmi-again", school=self.school, name="HDMI")
+
+
+class BadgeAwardAdminTests(TestCase):
+    """Awarding has a screen (D-24). This has a delete button, and that is all."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.school = School.objects.create(slug="default-school", name="Lycee")
+        cls.boss = User.objects.enroll(school=cls.school, cn="boss", role=Role.ADMIN)
+        cls.pupil = User.objects.enroll(school=cls.school, cn="pupil", role=Role.MEMBER)
+        cls.badge = Badge.objects.create(
+            slug="default-school-hdmi", school=cls.school, name="HDMI"
+        )
+        cls.given = BadgeAward.objects.create(
+            badge=cls.badge, user=cls.pupil, awarded_by=cls.boss
+        )
+
+    def setUp(self):
+        self.client.force_login(self.boss)
+
+    def test_nothing_is_awarded_from_here(self):
+        """It went around every rule `AwardForm` enforces, silently.
+
+        An arbitrary `awarded_by` where the application forces the signed-in
+        admin; people the application keeps out of the list, reporters
+        included, since a badge recognises a repair (D-10); another school's
+        pupil; and no `BADGE_AWARD` line where the application writes one.
+        """
+        self.assertEqual(self.client.get(reverse("admin:badges_badgeaward_add")).status_code, 403)
+
+    def test_the_sentence_somebody_was_given_is_not_rewritten_months_later(self):
+        page = self.client.get(
+            reverse("admin:badges_badgeaward_change", args=[self.given.pk])
+        )
+        self.assertFalse(page.context["adminform"].form.fields)
+
+    def test_taking_one_back_is_accounted_for(self):
+        """The asymmetry that mattered: giving was logged, taking back was not."""
+        self.client.post(
+            reverse("admin:badges_badgeaward_delete", args=[self.given.pk]), {"post": "yes"}
+        )
+        entry = AuditLog.objects.get(action=AuditLog.Action.BADGE_REVOKE)
+        self.assertEqual(entry.actor, self.boss)
+        self.assertEqual(entry.target_id, self.given.pk)
+        self.assertEqual(entry.payload, {"badge": self.badge.pk, "user": self.pupil.pk})
+
+    def test_the_bulk_action_accounts_for_every_row_it_erases(self):
+        """It goes through a collector that never calls `delete_model`."""
+        second = User.objects.enroll(school=self.school, cn="other", role=Role.MEMBER)
+        BadgeAward.objects.create(badge=self.badge, user=second, awarded_by=self.boss)
+        self.client.post(
+            reverse("admin:badges_badgeaward_changelist"),
+            {
+                "action": "delete_selected",
+                "_selected_action": [
+                    str(pk) for pk in BadgeAward.objects.values_list("pk", flat=True)
+                ],
+                "post": "yes",
+            },
+        )
+        self.assertEqual(BadgeAward.objects.count(), 0)
+        self.assertEqual(
+            AuditLog.objects.filter(action=AuditLog.Action.BADGE_REVOKE).count(), 2
+        )
+
+    def test_an_erasure_is_not_a_withdrawal(self):
+        """`anonymize()` deletes awards too (R-17), and that is another act.
+
+        It has its own line. A per-badge trail pointing at somebody exercising
+        their right to be forgotten would be the opposite of what the erasure
+        is for.
+        """
+        self.pupil.anonymize()
+        self.assertFalse(AuditLog.objects.filter(action=AuditLog.Action.BADGE_REVOKE).exists())
+
+    def test_taking_one_back_is_still_possible_and_still_uncounts(self):
+        self.assertContains(
+            self.client.get(
+                reverse("admin:badges_badgeaward_change", args=[self.given.pk])
+            ),
+            "deletelink",
+        )
+        self.client.post(
+            reverse("admin:badges_badgeaward_delete", args=[self.given.pk]), {"post": "yes"}
+        )
+        self.assertFalse(BadgeAward.objects.filter(pk=self.given.pk).exists())
+        self.badge.refresh_from_db()
+        self.assertEqual(self.badge.award_count, 0)
