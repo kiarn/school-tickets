@@ -213,15 +213,11 @@ be written honestly before somebody has read a real response from either system
   five catalogue badges shipped with the demo run their names through
   `gettext()` and come back in English, next to a school badge in German.
   Nothing is broken; nothing is translated either (D-15).
-- **A configurable title and logo.** `school-tickets` is written into
-  `templates/base.html` (the `<title>` and the header),
-  `templates/accounts/login.html` and `templates/notifications/sw.js`. Every
-  school wants its own acronym and crest, the login page included. One instance
-  serves one school -- `school_id` exists to avoid a hardcoded path, not to
-  promise multi-school management (D-06) -- so this is instance configuration,
-  and nothing rendered before login needs to know which school it is. The same
-  asset would give the application a favicon and the Push notification an icon,
-  neither of which exists.
+- **A web app manifest.** The application is a PWA (D-14) and has a service
+  worker, so Push works -- but with no manifest it cannot be installed to a
+  home screen. `ST_LOGO` now gives it the icon it was missing; what remains is
+  the manifest itself, which wants icon sizes rather than one file, plus
+  `name`, `start_url` and `display`.
 
 ## Licence
 

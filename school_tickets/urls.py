@@ -4,11 +4,15 @@ from django.urls import include, path
 
 from notifications import views as notification_views
 
+from . import branding
+
 urlpatterns = [
     path("admin/", admin.site.urls),
     # At the root, not under /static/: a service worker only controls pages
     # below its own URL. See notifications.views.service_worker.
     path("sw.js", notification_views.service_worker, name="service_worker"),
+    # Also the favicon and the Push icon: one file answers all three.
+    path("logo", branding.logo, name="logo"),
     path("", include("accounts.urls")),
     path("", include("badges.urls")),
     path("", include("notifications.urls")),

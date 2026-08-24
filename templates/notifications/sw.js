@@ -14,10 +14,13 @@ self.addEventListener("push", function (event) {
     try { data = event.data ? event.data.json() : {}; } catch (e) { data = {}; }
 
     event.waitUntil(self.registration.showNotification(
-        data.title || "school-tickets",
+        data.title || "{{ brand_name|escapejs }}",
         {
             body: data.body || "",
-            tag: data.url || "school-tickets",
+            tag: data.url || "{{ brand_name|escapejs }}",
+            {% comment %} The third thing the crest unblocks: a Push with no icon shows the
+               browser's own, which says nothing about who is calling. {% endcomment %}
+            {% if brand_logo %}icon: "{% url 'logo' %}",{% endif %}
             /* Replaces rather than stacks: three notifications about the same
                ticket are one line, not three. */
             renotify: false,

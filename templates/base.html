@@ -12,7 +12,10 @@
    and the bar sits under the home indicator. {% endcomment %}
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
-<title>{% block title %}{% translate "Tickets" %}{% endblock %} · school-tickets</title>
+<title>{% block title %}{% translate "Tickets" %}{% endblock %} · {{ brand_name }}</title>
+{% comment %} The crest, when the instance has one, answers the favicon too -- SVG and
+   PNG both work as one, and the application had none at all. {% endcomment %}
+{% if brand_logo %}<link rel="icon" href="{% url 'logo' %}">{% endif %}
 <link rel="stylesheet" href="{% static 'app.css' %}">
 {% comment %} Set the theme before first paint. daisyUI's dark theme keys off
    [data-theme="dark"] only -- it ships no prefers-color-scheme rule -- so
@@ -37,8 +40,14 @@
 
 <header class="navbar bg-base-100 sticky top-0 z-30 shadow-sm px-3 gap-2">
     <div class="flex-1 min-w-0">
-        <a href="{% url 'tickets:list' %}" class="btn btn-ghost px-2 text-lg font-semibold">
-            school-tickets
+        <a href="{% url 'tickets:list' %}"
+           class="btn btn-ghost px-2 text-lg font-semibold gap-2">
+            {% if brand_logo %}
+                {% comment %} Decorative: the name sits right beside it, so a screen reader
+                   that read both would say it twice. {% endcomment %}
+                <img src="{% url 'logo' %}" alt="" class="h-7 w-auto">
+            {% endif %}
+            <span class="truncate">{{ brand_name }}</span>
         </a>
     </div>
     {% if user.is_authenticated %}

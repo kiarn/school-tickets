@@ -56,6 +56,8 @@ TEMPLATES = [
                 # The unread badge has to be right on every page or it is
                 # worse than absent (specs/09-notifications.md).
                 "notifications.context_processors.unread",
+                # Name and crest, needed before login as much as after (D-30).
+                "school_tickets.branding.identity",
             ],
         },
     },
@@ -128,6 +130,14 @@ ST_X_ACCEL_PREFIX = os.environ.get("ST_X_ACCEL_PREFIX", "")
 
 # --- Default school (D-06) ---------------------------------------------------
 ST_DEFAULT_SCHOOL_SLUG = os.environ.get("ST_DEFAULT_SCHOOL", "default-school")
+
+# --- Instance identity (D-30) -------------------------------------------------
+# One instance serves one school, so its name and crest are configuration and
+# not data. See school_tickets/branding.py.
+ST_SITE_NAME = os.environ.get("ST_SITE_NAME", "school-tickets")
+# Absolute path to an SVG or PNG. Empty means the name stands alone, which is
+# what a fresh install looks like.
+ST_LOGO = os.environ.get("ST_LOGO", "")
 
 # --- Worker (D-20) -----------------------------------------------------------
 # Cadences in seconds. Deferred as configurable: see specs/01-decisions.md.

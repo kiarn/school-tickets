@@ -78,8 +78,17 @@ def _payload(notification, *, count=1) -> str:
             url = reverse("tickets:list")
         else:
             url = reverse("notifications:list")
+        # **No title.** The school's name is identical on every notification, so
+        # shipping it in each encrypted payload is waste -- and it would make
+        # ST_SITE_NAME a setting the worker and the web both hold and must keep
+        # equal, which is the kind of pair that quietly drifts. ``sw.js`` fills
+        # it in from ``data.title || brand_name``, and the web renders sw.js,
+        # so the name is configured in exactly one place (D-30).
+        #
+        # The cost, such as it is: a browser caches its service worker, so a
+        # school that renames itself keeps the old name on Push until sw.js is
+        # fetched again.
         return json.dumps({
-            "title": "school-tickets",
             "body": str(_headline(
                 notification.kind,
                 room=notification.ticket.room_label if notification.ticket_id else "",
