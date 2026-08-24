@@ -48,7 +48,7 @@ from parc.models import Device, Room
 
 from . import attachments as photos
 from .forms import CommentForm, TicketForm, VisibilityForm
-from .models import Attachment, Comment, Tag, Ticket, TicketAssignee
+from .models import Attachment, Comment, Tag, Ticket, TicketAssignee, TicketTag
 
 
 def _ticket_or_404(request, pk):
@@ -112,9 +112,18 @@ def ticket_list(request):
     else:
         room = ""
 
+    # Resolved before it filters, like `room` just above. A slug matching no tag
+    # -- a typo, or a link shared before the tag was renamed -- used to narrow
+    # the list to nothing while `selected_tag` stayed None: neither the chip
+    # that removes the filter nor the "nothing under these filters" line was
+    # drawn. An empty list with no visible cause is precisely what the chips
+    # exist to prevent.
     tag = request.GET.get("tag") or ""
-    if tag:
-        tickets = tickets.filter(tags__slug=tag)
+    selected_tag = (
+        Tag.objects.filter(school=request.user.school, slug=tag).first() if tag else None
+    )
+    if selected_tag:
+        tickets = tickets.filter(tags=selected_tag)
 
     if search:
         # Comments are searched, and they are the reason this exists: the note
@@ -157,9 +166,7 @@ def ticket_list(request):
             "rooms": rooms,
             "tags": Tag.objects.filter(school=request.user.school).order_by("name"),
             "selected_room": rooms.filter(pk=room).first() if room else None,
-            "selected_tag": Tag.objects.filter(
-                school=request.user.school, slug=tag
-            ).first(),
+            "selected_tag": selected_tag,
             "can_work": can_work_on(request.user),
         },
     )
@@ -194,6 +201,11 @@ def ticket_detail(request, pk):
             ),
             "can_widen": can_widen(request.user),
             "assignable": _team(request.user) if _is_admin(request.user) else None,
+            "taggable": (
+                Tag.objects.filter(school=ticket.school).order_by("name")
+                if can_work_on(request.user)
+                else None
+            ),
         },
     )
 
@@ -371,6 +383,44 @@ def ticket_assignees(request, pk):
         # Only the newcomers: re-saving the same list must not re-notify.
         events.assigned(ticket, wanted - current, by=request.user)
     messages.success(request, _("Assignments updated."))
+    return redirect("tickets:detail", pk=ticket.pk)
+
+
+@require_POST
+@login_required
+def ticket_tags(request, pk):
+    """Re-tag: the half of tagging that had no door.
+
+    A tag here is a **conclusion** -- `hdmi`, `linbo`, `drucker` -- and the
+    person who opens a ticket is the person who has not diagnosed it yet. They
+    see a black screen and tick `bildschirm`; the fault was a cable, and the
+    repairer learns it an hour later. Offering tags only on the creation form
+    recorded a guess and gave the answer nowhere to go -- and the same applies
+    to the ticket opened before a tag existed, which no filter would ever
+    reach again.
+
+    ``can_work_on``, for the reason that decides ``status`` and ``claim``: what
+    is being written down is the diagnosis, and reporting is not repairing.
+
+    Neither audited nor notified, unlike visibility and assignment. Those two
+    change who may read a ticket; this one changes how it is filed. The audit
+    log is a duty to account for actions, not a changelog.
+    """
+    ticket = _ticket_or_404(request, pk)
+    if not can_work_on(request.user):
+        raise Http404
+
+    # Scoped to the ticket's own school, not the poster's: the identifiers come
+    # from the page, and a tag belongs to one school (D-06).
+    wanted = set(Tag.objects.filter(school=ticket.school, pk__in=request.POST.getlist("tags")))
+    current = set(ticket.tags.all())
+    if wanted != current:
+        with transaction.atomic():
+            TicketTag.objects.filter(ticket=ticket, tag__in=current - wanted).delete()
+            TicketTag.objects.bulk_create(
+                [TicketTag(ticket=ticket, tag=tag) for tag in wanted - current]
+            )
+        messages.success(request, _("Tags updated."))
     return redirect("tickets:detail", pk=ticket.pk)
 
 

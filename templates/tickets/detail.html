@@ -35,8 +35,24 @@
             {% endif %}
 
             {% for tag in ticket.tags.all %}
-                <span class="badge badge-outline">{{ tag.name }}</span>
+                <span class="badge {{ tag.badge_class }}">{{ tag.name }}</span>
             {% endfor %}
+
+            {% comment %} A tag is a conclusion, and it is drawn where the conclusion is
+               reached. No tag yet is the case worth a word rather than a blank:
+               a ticket nobody filed is a ticket no filter will ever find.
+               {% endcomment %}
+            {% if taggable %}
+                <button type="button" class="badge badge-ghost gap-1"
+                        onclick="tags_modal.showModal()">
+                    <span aria-hidden="true">+</span>
+                    {% if ticket.tags.all %}
+                        {% translate "Tags" %}
+                    {% else %}
+                        {% translate "Add a tag" %}
+                    {% endif %}
+                </button>
+            {% endif %}
         </div>
 
         {% comment %} Never a detail: widening retroactively publishes the whole thread, so
@@ -169,6 +185,42 @@
                 <div class="modal-action">
                     <button type="button" class="btn btn-ghost"
                             onclick="assign_modal.close()">{% translate "Cancel" %}</button>
+                    <button type="submit" class="btn btn-primary">{% translate "Save" %}</button>
+                </div>
+            </form>
+        </div>
+        <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    </dialog>
+{% endif %}
+
+{% if taggable %}
+    <dialog id="tags_modal" class="modal modal-bottom sm:modal-middle">
+        <div class="modal-box">
+            <h3 class="font-semibold mb-1">{% translate "How this one is filed" %}</h3>
+            <p class="text-sm opacity-60 mb-3">
+                {% translate "What the fault turned out to be, not what it looked like." %}
+            </p>
+            <form method="post" action="{% url 'tickets:tags' ticket.pk %}"
+                  class="flex flex-col gap-2">
+                {% csrf_token %}
+                {% for tag in taggable %}
+                    <label class="label cursor-pointer justify-start gap-3">
+                        <input type="checkbox" name="tags" value="{{ tag.pk }}"
+                               class="checkbox checkbox-sm"
+                               {% if tag in ticket.tags.all %}checked{% endif %}>
+                        <span class="badge {{ tag.badge_class }}">{{ tag.name }}</span>
+                    </label>
+                {% empty %}
+                    {% comment %} A fresh instance has no tag at all, and the vocabulary is
+                       created in the Django admin. Saying so beats an empty box.
+                       {% endcomment %}
+                    <p class="text-sm opacity-60">
+                        {% translate "No tag exists yet for this school." %}
+                    </p>
+                {% endfor %}
+                <div class="modal-action">
+                    <button type="button" class="btn btn-ghost"
+                            onclick="tags_modal.close()">{% translate "Cancel" %}</button>
                     <button type="submit" class="btn btn-primary">{% translate "Save" %}</button>
                 </div>
             </form>

@@ -125,10 +125,40 @@ class TicketAssignee(models.Model):
 class Tag(models.Model):
     # Always local to a school and never translated: they therefore never enter
     # the Crowdin catalogues (D-15).
+
+    class Color(models.TextChoices):
+        """The theme's palette, by name rather than by value.
+
+        These are daisyUI's semantic colours, and the value **is** the CSS
+        class suffix -- which is why this is a fixed list and not the free
+        text it used to be. Free text made a tag whose colour silently did
+        nothing: the template composes ``badge-<value>``, and a typed
+        "orange" composes a class that does not exist.
+
+        No hex code, deliberately: a colour picked here has to stay readable
+        in the light theme and in the dark one, and only the palette knows how
+        (D-18).
+        """
+
+        PRIMARY = "primary", _("Primary")
+        SECONDARY = "secondary", _("Secondary")
+        ACCENT = "accent", _("Accent")
+        NEUTRAL = "neutral", _("Neutral")
+        INFO = "info", _("Info")
+        SUCCESS = "success", _("Success")
+        WARNING = "warning", _("Warning")
+        ERROR = "error", _("Error")
+
     school = models.ForeignKey("accounts.School", on_delete=models.CASCADE, related_name="tags")
     slug = models.SlugField()
     name = models.CharField(max_length=100)
-    color = models.CharField(max_length=20, blank=True)
+    color = models.CharField(
+        max_length=20,
+        blank=True,
+        choices=Color.choices,
+        verbose_name=_("Colour"),
+        help_text=_("Leave empty for a plain outline."),
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -138,6 +168,20 @@ class Tag(models.Model):
 
     def __str__(self):
         return self.name
+
+    @property
+    def badge_class(self) -> str:
+        """How the chip is drawn, decided here rather than in three templates.
+
+        A tinted tag is *soft* and never solid: a row of saturated chips
+        competes with the priority badge next to it, which is the one thing on
+        a card that has to be read first.
+
+        No colour keeps the outline rather than falling back to a grey tint --
+        "none chosen" has to stay distinguishable from ``neutral``, which is a
+        deliberate choice somebody can make.
+        """
+        return f"badge-soft badge-{self.color}" if self.color else "badge-outline"
 
 
 class TicketTag(models.Model):

@@ -41,7 +41,7 @@
             {% endif %}
 
             {% for tag in ticket.tags.all %}
-                <span class="badge badge-outline badge-sm">{{ tag.name }}</span>
+                <span class="badge badge-sm {{ tag.badge_class }}">{{ tag.name }}</span>
             {% endfor %}
 
             {% comment %} Visibility is never implicit: a pupil must be able to tell at a

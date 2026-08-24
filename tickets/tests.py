@@ -805,6 +805,25 @@ class ListViewTests(TestCase):
     def test_a_bad_room_is_ignored_rather_than_crashing(self):
         self.assertIn("open normal", self.titles(self.member, "?room=nonsense"))
 
+    def test_a_slug_matching_no_tag_is_ignored_rather_than_emptying_the_list(self):
+        """A typo, or a link shared before the tag was renamed.
+
+        It used to narrow the list to nothing while `selected_tag` stayed None,
+        so neither the chip that removes the filter nor the "nothing under
+        these filters" line was drawn: an empty screen with no visible cause,
+        which is the one thing the chips exist to prevent.
+        """
+        self.assertIn("open normal", self.titles(self.member, "?tag=hdmy"))
+
+        self.client.force_login(self.member)
+        response = self.client.get(reverse("tickets:list") + "?tag=hdmy")
+        self.assertIsNone(response.context["selected_tag"])
+
+    def test_a_tag_of_another_school_narrows_nothing(self):
+        elsewhere = School.objects.create(slug="ailleurs", name="Ailleurs")
+        Tag.objects.create(school=elsewhere, slug="fremd", name="Fremd")
+        self.assertIn("open normal", self.titles(self.member, "?tag=fremd"))
+
     def test_pagination_splits_the_archive(self):
         for i in range(25):
             Ticket.objects.create(
@@ -877,3 +896,125 @@ class SearchTests(TestCase):
         self.client.force_login(self.member)
         response = self.client.get(reverse("tickets:list") + "?q=maus")
         self.assertEqual(response.context["tickets"][0].matches, [])
+
+
+class RetaggingTests(TestCase):
+    """`t/<pk>/tags/`, the door that was missing.
+
+    A tag is a conclusion -- `hdmi`, `linbo`, `drucker` -- and whoever opens a
+    ticket has not diagnosed it yet: they see a black screen and tick
+    `bildschirm` where the fault was a cable. Setting tags only on the creation
+    form recorded a guess and gave the answer nowhere to go.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.school = School.objects.create(slug="lycee3", name="Lycee")
+        cls.room = Room.objects.create(school=cls.school, name="A101", sort_key="1-101")
+        cls.member = User.objects.enroll(school=cls.school, cn="m", role=Role.MEMBER)
+        cls.reporter = User.objects.enroll(school=cls.school, cn="r", role=Role.REPORTER)
+        cls.screen = Tag.objects.create(school=cls.school, slug="bildschirm", name="Bildschirm")
+        cls.hdmi = Tag.objects.create(school=cls.school, slug="hdmi", name="HDMI")
+
+    def setUp(self):
+        # Opened by the reporter, tagged with what it looked like.
+        self.ticket = Ticket.objects.create(
+            school=self.school, room=self.room, title="Schwarzer Bildschirm",
+            visibility=Visibility.ALL, created_by=self.reporter,
+        )
+        TicketTag.objects.create(ticket=self.ticket, tag=self.screen)
+
+    def retag(self, user, pks):
+        self.client.force_login(user)
+        return self.client.post(
+            reverse("tickets:tags", args=[self.ticket.pk]), {"tags": pks}
+        )
+
+    def slugs(self):
+        return sorted(self.ticket.tags.values_list("slug", flat=True))
+
+    def test_the_repairer_replaces_the_guess_with_the_diagnosis(self):
+        self.retag(self.member, [self.hdmi.pk])
+        self.assertEqual(self.slugs(), ["hdmi"])
+
+    def test_a_ticket_that_was_never_tagged_can_be_filed_later(self):
+        """The case D-31 multiplies: most tickets arrive with nothing ticked."""
+        self.ticket.tags.clear()
+        self.retag(self.member, [self.hdmi.pk, self.screen.pk])
+        self.assertEqual(self.slugs(), ["bildschirm", "hdmi"])
+
+    def test_sending_nothing_clears_them(self):
+        self.retag(self.member, [])
+        self.assertEqual(self.slugs(), [])
+
+    def test_reporting_is_not_repairing_even_on_ones_own_ticket(self):
+        """Same rule as `status` and `claim`: what is written is a diagnosis."""
+        self.assertEqual(self.retag(self.reporter, [self.hdmi.pk]).status_code, 404)
+        self.assertEqual(self.slugs(), ["bildschirm"])
+
+    def test_a_tag_from_another_school_is_refused(self):
+        elsewhere = School.objects.create(slug="ailleurs2", name="Ailleurs")
+        foreign = Tag.objects.create(school=elsewhere, slug="fremd", name="Fremd")
+        self.retag(self.member, [foreign.pk, self.hdmi.pk])
+        self.assertEqual(self.slugs(), ["hdmi"])
+
+    def test_a_ticket_one_may_not_read_is_a_404_not_a_403(self):
+        self.ticket.visibility = Visibility.ADMINS
+        self.ticket.save(update_fields=["visibility"])
+        self.assertEqual(self.retag(self.member, [self.hdmi.pk]).status_code, 404)
+
+    def test_the_route_answers_no_get(self):
+        self.client.force_login(self.member)
+        response = self.client.get(reverse("tickets:tags", args=[self.ticket.pk]))
+        self.assertEqual(response.status_code, 405)
+
+    def test_the_button_is_drawn_for_the_team_and_for_nobody_else(self):
+        self.client.force_login(self.member)
+        self.assertContains(
+            self.client.get(reverse("tickets:detail", args=[self.ticket.pk])),
+            "tags_modal",
+        )
+        self.client.force_login(self.reporter)
+        self.assertNotContains(
+            self.client.get(reverse("tickets:detail", args=[self.ticket.pk])),
+            "tags_modal",
+        )
+
+
+class TagColourTests(TestCase):
+    """`Tag.color` was filled by the demo seed and read by no template."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.school = School.objects.create(slug="lycee4", name="Lycee")
+
+    def test_a_tinted_tag_is_soft_and_never_solid(self):
+        tag = Tag.objects.create(
+            school=self.school, slug="hdmi", name="HDMI", color=Tag.Color.WARNING
+        )
+        self.assertEqual(tag.badge_class, "badge-soft badge-warning")
+
+    def test_no_colour_keeps_the_outline_rather_than_a_grey_tint(self):
+        """"None chosen" has to stay distinguishable from `neutral`."""
+        tag = Tag.objects.create(school=self.school, slug="plain", name="Plain")
+        self.assertEqual(tag.badge_class, "badge-outline")
+        neutral = Tag.objects.create(
+            school=self.school, slug="grey", name="Grey", color=Tag.Color.NEUTRAL
+        )
+        self.assertEqual(neutral.badge_class, "badge-soft badge-neutral")
+
+    def test_every_choice_names_a_class_the_stylesheet_defines(self):
+        """The trap of D-18: a class composed in a template is never generated.
+
+        daisyUI is imported as plain CSS rather than as a plugin, so the
+        modifiers ship whether or not a template mentions them -- which is what
+        makes `badge-{{ color }}` safe here. This test is what will notice the
+        day that stops being true.
+        """
+        from django.conf import settings
+
+        css = (settings.BASE_DIR / "static" / "app.css").read_text()
+        for value, _label in Tag.Color.choices:
+            self.assertIn(f".badge-{value}", css, f"badge-{value} missing from app.css")
+        self.assertIn(".badge-soft", css)
+        self.assertIn(".badge-outline", css)
