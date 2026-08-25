@@ -187,6 +187,24 @@ textarea {
 .filter-tabs > .tab {
     border-radius: 0;
     border-style: none;
+    /* Never squeezed below its own label. A `.tab` is a flex item, so it
+     * shrinks by default, and daisyUI clips what no longer fits: on a phone the
+     * strip silently ate the end of "Les miens" (D-43). With `flex: none` the
+     * strip scrolls instead -- which is what `overflow-x-auto` is there for. */
+    flex: none;
+}
+
+/* Four labels, one line, no scrolling: French is the long one ("Les miens"),
+ * and on a 360 px screen the four tabs plus the filter button overrun by a few
+ * pixels. Tightening the padding buys them back -- and a tab that has to be
+ * scrolled to is a tab nobody uses. The touch target is unaffected: its height
+ * comes from the 2.75 rem minimum set further down. */
+/* Written the old way on purpose: range syntax (`width < 30rem`) needs
+ * Safari 16.4, and a school's phones are not all new. */
+@media (max-width: 29.999rem) {
+    .filter-tabs > .tab {
+        --tab-p: 0.5rem;
+    }
 }
 
 .filter-tabs > .tab:first-child {
