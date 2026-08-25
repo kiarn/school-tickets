@@ -47,7 +47,7 @@ from notifications import events
 from parc.models import Device, Room
 
 from . import attachments as photos
-from .forms import CommentForm, TicketForm, VisibilityForm
+from .forms import CommentForm, TicketCorrectionForm, TicketForm, VisibilityForm
 from .models import Attachment, Comment, Tag, Ticket, TicketAssignee, TicketTag
 
 
@@ -64,15 +64,22 @@ ACTIVE = (Ticket.Status.OPEN, Ticket.Status.IN_PROGRESS)
 PAGE_SIZE = 20
 
 #: Urgent first, in every view. Ordering on ``priority`` itself sorts
-#: alphabetically -- high, low, normal -- which reads as correct until a `low`
-#: turns up. Annotated rather than passed to ``order_by`` directly: the
-#: expression then sits in the SELECT list, which DISTINCT queries require.
+#: alphabetically -- high, low, normal, urgent -- which reads as correct until a
+#: `low` turns up, and which puts the most urgent level last. Annotated rather
+#: than passed to ``order_by`` directly: the expression then sits in the SELECT
+#: list, which DISTINCT queries require.
 PRIORITY_RANK = Case(
-    When(priority=Ticket.Priority.HIGH, then=0),
-    When(priority=Ticket.Priority.NORMAL, then=1),
-    default=2,
+    When(priority=Ticket.Priority.URGENT, then=0),
+    When(priority=Ticket.Priority.HIGH, then=1),
+    When(priority=Ticket.Priority.NORMAL, then=2),
+    default=3,
     output_field=IntegerField(),
 )
+
+#: What the "Urgent" view holds (D-37). Both levels above normal, not `urgent`
+#: alone: the tab answers "what do I do next", and a `high` ticket that no view
+#: shows is a level nobody would ever set.
+HURRIED = (Ticket.Priority.URGENT, Ticket.Priority.HIGH)
 
 
 @login_required
@@ -105,7 +112,7 @@ def ticket_list(request):
             else ACTIVE
         )
     if view == "urgent":
-        tickets = tickets.filter(priority=Ticket.Priority.HIGH)
+        tickets = tickets.filter(priority__in=HURRIED)
     if view == "mine":
         tickets = tickets.filter(assignees=request.user)
 
@@ -187,6 +194,10 @@ def ticket_detail(request, pk):
     # One choice means nothing to choose: the block stays a plain statement of
     # who can read, rather than a form that can only re-submit the status quo.
     choices = visibility_targets(request.user, ticket.visibility)
+    # The same predicate as reopening, and for the same reason: a mistyped room
+    # is almost always the reporter's own (D-37). Built only for whoever may
+    # use it -- the form costs two queries that a reader has no use for.
+    may_correct = can_work_on(request.user) or ticket.created_by_id == request.user.pk
     return render(
         request,
         "tickets/detail.html",
@@ -200,7 +211,10 @@ def ticket_detail(request, pk):
             "is_assignee": request.user in assignees,
             "comment_form": CommentForm(),
             "can_work": can_work_on(request.user),
-            "can_reopen": can_work_on(request.user) or ticket.created_by_id == request.user.pk,
+            "can_reopen": may_correct,
+            "correction_form": (
+                TicketCorrectionForm(instance=ticket, user=request.user) if may_correct else None
+            ),
             "visibility_choices": choices,
             "visibility_form": VisibilityForm(
                 user=request.user, ticket=ticket, initial={"visibility": ticket.visibility}
@@ -474,6 +488,37 @@ def ticket_resolution(request, pk):
         ticket.resolution_comment = None
         messages.success(request, _("Resolution mark removed."))
     ticket.save(update_fields=["resolution_comment", "updated_at"])
+    return redirect("tickets:detail", pk=ticket.pk)
+
+
+@require_POST
+@login_required
+def ticket_correct(request, pk):
+    """Fix what was mistyped: the room, the machine, how urgent it is (D-37).
+
+    People report faults under pressure, between two lessons, and they get
+    these wrong -- routinely. A ticket filed on the wrong room is a ticket the
+    next person cannot find, and nothing short of the Django admin could move
+    it. The author may correct their own report: the wrong room is almost
+    always theirs, and forbidding them the fix guarantees it stays wrong.
+
+    Nothing here touches what somebody wrote. The title and the description are
+    their words; a correction adds a note, it does not rewrite the account.
+    """
+    ticket = _ticket_or_404(request, pk)
+    if not can_work_on(request.user) and ticket.created_by_id != request.user.pk:
+        raise Http404
+
+    form = TicketCorrectionForm(request.POST, instance=ticket, user=request.user)
+    if not form.is_valid():
+        # Reachable without hostility: pick a room, post before HTMX has
+        # repainted the machine list, and the machine belongs to the old room.
+        # Refusing outright would throw the correction away without a word.
+        messages.error(request, _("Correction refused: check the room and the machine."))
+        return redirect("tickets:detail", pk=ticket.pk)
+
+    form.save()
+    messages.success(request, _("Ticket corrected."))
     return redirect("tickets:detail", pk=ticket.pk)
 
 

@@ -59,8 +59,11 @@
         </a>
     {% endif %}
     {% if selected_tag %}
+        {% comment %} The `#` the tags carry everywhere else (D-36): a filter chip has to
+           say which vocabulary it filters on. {% endcomment %}
         <a href="{% querystring tag=None page=None %}" class="badge badge-neutral gap-1">
-            {{ selected_tag.name }} <span aria-hidden="true">✕</span>
+            <span><span aria-hidden="true" class="opacity-50">#</span>{{ selected_tag.name }}</span>
+            <span aria-hidden="true">✕</span>
             <span class="sr-only">{% translate "Remove this filter" %}</span>
         </a>
     {% endif %}

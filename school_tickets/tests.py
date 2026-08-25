@@ -336,17 +336,33 @@ class CatalogueTests(TestCase):
         by guessing a new string from a similar old one -- which is how "All
         rooms" arrived pre-translated from "Any room" and would have shipped
         untranslated without a word.
+
+        Continuation lines are joined rather than ignored, and that is the
+        whole reason this reads the file field by field. gettext writes
+        ``msgstr ""`` followed by quoted lines whenever a string is long or
+        carries an embedded newline -- so a translation that is perfectly
+        present looks empty to anything that only reads the first line, and a
+        long *msgid* looks like the header. The check would have gone on
+        passing while saying nothing about either.
         """
         text = (self.LOCALE / language / "LC_MESSAGES" / "django.po").read_text()
         for block in text.split("\n\n"):
-            lines = block.split("\n")
-            msgid = [l for l in lines if l.startswith("msgid ")]
-            if not msgid or msgid[0] == 'msgid ""':
+            fields, field, fuzzy = {}, None, False
+            for line in block.split("\n"):
+                if line.startswith("#"):
+                    fuzzy = fuzzy or (line.startswith("#,") and "fuzzy" in line)
+                    continue
+                if line.startswith(("msgid", "msgstr")):
+                    field, _, value = line.partition(" ")
+                elif line.startswith('"') and field:
+                    value = line
+                else:
+                    continue
+                fields[field] = fields.get(field, "") + value.strip()[1:-1]
+            if not fields.get("msgid"):
                 continue  # the header, whose msgid is empty by definition
-            body = [l for l in lines if l.startswith("msgstr")]
-            filled = any(l not in ('msgstr ""', 'msgstr[0] ""', 'msgstr[1] ""') for l in body)
-            fuzzy = any(l.startswith("#,") and "fuzzy" in l for l in lines)
-            yield msgid[0], filled and not fuzzy
+            filled = any(text for name, text in fields.items() if name.startswith("msgstr"))
+            yield 'msgid "{}"'.format(fields["msgid"]), filled and not fuzzy
 
     def test_german_and_french_are_complete(self):
         """Untranslated is not a state this project ships in: the school is

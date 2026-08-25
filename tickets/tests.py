@@ -253,6 +253,56 @@ class ScreenTests(TestCase):
             self.ticket.attachments.get().pk
         ]))
 
+    def test_the_state_decides_the_colour_in_one_place(self):
+        """Two templates draw that chip, so the mapping lives in the model and
+        they cannot drift apart (D-36)."""
+        for status, expected in (
+            (Ticket.Status.OPEN, "badge-warning"),
+            (Ticket.Status.IN_PROGRESS, "badge-info"),
+            (Ticket.Status.RESOLVED, "badge-success"),
+            (Ticket.Status.CANCELLED, "badge-ghost"),
+        ):
+            with self.subTest(status=status):
+                self.ticket.status = status
+                self.assertEqual(self.ticket.status_class, expected)
+
+    def test_status_priority_and_tags_are_told_apart_on_sight(self):
+        """D-36. The three shared one row of chips and colour did not separate
+        them: a tag the school painted `error` was drawn exactly like "High",
+        and one painted `warning` like "Open". The state keeps the chip, the
+        priority is named in words, the tag carries a `#`."""
+        TicketTag.objects.create(
+            ticket=self.ticket,
+            tag=Tag.objects.create(
+                school=self.school, slug="hdmi", name="HDMI", color=Tag.Color.ERROR
+            ),
+        )
+        page = self.client.get(
+            reverse("tickets:detail", args=[self.ticket.pk])
+        ).content.decode()
+        self.assertIn("#</span>HDMI", page)
+        self.assertIn("High priority", page)
+        # The chip that is left says the state and nothing else. The priority
+        # no longer has one, which is what used to read as a fourth tag.
+        self.assertIn("badge badge-warning", page)
+        self.assertNotIn("badge badge-error", page)
+
+    def test_a_normal_priority_is_drawn_nowhere(self):
+        """It is the default, so it says nothing worth a line of screen -- and a
+        chip that comes and goes from one ticket to the next was half of what
+        made the page hard to read (D-36)."""
+        self.ticket.priority = Ticket.Priority.NORMAL
+        self.ticket.save(update_fields=["priority"])
+        for url in (reverse("tickets:list"), reverse("tickets:detail", args=[self.ticket.pk])):
+            with self.subTest(url=url):
+                page = self.client.get(url).content.decode()
+                # The flag is the priority, and nothing else on either page
+                # uses it. "Normal" does still appear inside the correction
+                # picker (D-37), where it is the current value rather than an
+                # announcement -- which is why this looks for the mark and not
+                # for the word.
+                self.assertNotIn("⚑", page)
+
     def test_the_reader_is_told_who_else_can_see_this(self):
         """Visibility is never implicit on screen (doc 08)."""
         response = self.client.get(reverse("tickets:detail", args=[self.ticket.pk]))
@@ -546,6 +596,65 @@ class WriteTests(TestCase):
         self.assertEqual(comment.attachments.count(), 1)
         self.assertEqual(ticket.attachments.count(), 1)
 
+    # --- correcting ---------------------------------------------------------
+
+    def test_the_author_may_correct_the_room_they_mistyped(self):
+        """D-37. Rooms are mistyped in a hurry, and until now nothing short of
+        the Django admin could move a ticket. The label moves with it: it was
+        frozen against a *rename* (doc 03), which is not this case -- here it
+        was simply wrong."""
+        ticket = self.open_ticket(created_by=self.reporter)
+        self.client.force_login(self.reporter)
+        self.post("tickets:correct", ticket, {
+            "room": self.other_room.pk, "priority": Ticket.Priority.NORMAL,
+        })
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.room, self.other_room)
+        self.assertEqual(ticket.room_label, "205")
+
+    def test_the_priority_can_be_raised_after_the_fact(self):
+        """The one the corridor could not know: a fault becomes urgent when the
+        room is needed tomorrow, and that is learnt after the report."""
+        ticket = self.open_ticket()
+        self.client.force_login(self.member)
+        self.post("tickets:correct", ticket, {
+            "room": self.room.pk, "priority": Ticket.Priority.URGENT,
+        })
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.priority, Ticket.Priority.URGENT)
+
+    def test_a_reader_who_neither_repairs_nor_reported_may_not_correct(self):
+        ticket = self.open_ticket(visibility=Visibility.ALL)
+        self.client.force_login(self.reporter)
+        response = self.post("tickets:correct", ticket, {
+            "room": self.other_room.pk, "priority": Ticket.Priority.URGENT,
+        })
+        self.assertEqual(response.status_code, 404)
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.room, self.room)
+
+    def test_a_machine_from_another_room_is_refused(self):
+        """The HTMX repaint is a convenience; the queryset is the rule."""
+        ticket = self.open_ticket()
+        self.client.force_login(self.member)
+        self.post("tickets:correct", ticket, {
+            "room": self.room.pk, "device": self.foreign_device.pk,
+            "priority": Ticket.Priority.NORMAL,
+        })
+        ticket.refresh_from_db()
+        self.assertIsNone(ticket.device)
+
+    def test_a_room_from_another_school_is_refused(self):
+        elsewhere = School.objects.create(slug="ailleurs", name="Ailleurs")
+        foreign = Room.objects.create(school=elsewhere, name="Z999")
+        ticket = self.open_ticket()
+        self.client.force_login(self.member)
+        self.post("tickets:correct", ticket, {
+            "room": foreign.pk, "priority": Ticket.Priority.NORMAL,
+        })
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.room, self.room)
+
     # --- status -------------------------------------------------------------
 
     def test_a_pupil_closes_their_own_repair(self):
@@ -746,6 +855,7 @@ class ListViewTests(TestCase):
 
         cls.open_normal = ticket("open normal")
         cls.open_high = ticket("open high", priority=Ticket.Priority.HIGH, tags=[cls.tag])
+        cls.open_urgent = ticket("open urgent", priority=Ticket.Priority.URGENT)
         cls.working = ticket("in progress", status=Ticket.Status.IN_PROGRESS)
         cls.done = ticket("resolved", status=Ticket.Status.RESOLVED, room=cls.b204)
         cls.secret = ticket("admins only", visibility=Visibility.ADMINS)
@@ -764,12 +874,18 @@ class ListViewTests(TestCase):
         self.assertNotIn("in progress", titles)
         self.assertNotIn("resolved", titles)
 
-    def test_urgent_view_keeps_high_priority_and_active_only(self):
-        self.assertEqual(self.titles(self.member, "?view=urgent"), ["open high"])
+    def test_urgent_view_holds_both_levels_above_normal(self):
+        """D-37: the tab answers "what do I do next", so it shows `urgent` and
+        `high`. A level no view ever shows is a level nobody would set."""
+        self.assertEqual(
+            self.titles(self.member, "?view=urgent"), ["open urgent", "open high"]
+        )
 
-    def test_high_priority_comes_first_in_every_view(self):
+    def test_the_most_urgent_comes_first_in_every_view(self):
+        """`priority` is a text column: sorted as it stands, "urgent" would come
+        last of the four. PRIORITY_RANK is what stops that."""
         titles = self.titles(self.member)
-        self.assertEqual(titles[0], "open high")
+        self.assertEqual(titles[:2], ["open urgent", "open high"])
 
     def test_mine_is_for_those_who_repair(self):
         self.assertEqual(self.titles(self.member, "?view=mine"), ["assigned"])
@@ -833,9 +949,9 @@ class ListViewTests(TestCase):
                 school=self.school, room=self.a101, title=f"bulk {i}",
                 visibility=Visibility.TEAM, created_by=self.admin,
             )
-        # 25 bulk tickets plus the three open ones this class already has.
+        # 25 bulk tickets plus the four open ones this class already has.
         self.assertEqual(len(self.titles(self.member)), 20)
-        self.assertEqual(len(self.titles(self.member, "?page=2")), 8)
+        self.assertEqual(len(self.titles(self.member, "?page=2")), 9)
 
 
 class SearchTests(TestCase):

@@ -65,7 +65,7 @@ nothing and provisions nobody, it only checks that an already-enrolled person
 is who they say they are.
 
 ```sh
-.venv/bin/python manage.py test              # 279 tests, visibility among them
+.venv/bin/python manage.py test              # 286 tests, visibility among them
 .venv/bin/python manage.py run_worker --once # one pass of every due job
 .venv/bin/python manage.py vapid_keys        # Web Push keys, once per install
 ```
@@ -76,7 +76,7 @@ repository, so a fresh clone renders English until they are built.
 
 ```sh
 .venv/bin/python manage.py compilemessages -i .venv   # after every clone
-.venv/bin/python manage.py makemessages -l de -l fr -l en \
+.venv/bin/python manage.py makemessages --no-wrap -l de -l fr -l en \
     -i '.venv/*' -i 'tools/*' -i 'staticfiles/*'      # after adding a string
 ```
 
@@ -174,6 +174,12 @@ Two traps, both of which cost something before they were understood:
 - **`makemessages` writes the English plural rule into every catalogue it
   creates.** French counts zero as singular (`plural=(n > 1)`), so the header
   is corrected by hand after each run -- and a test remembers it.
+
+`--no-wrap` is not cosmetic: without it every entry is folded at 77 columns, one
+translated string per handful of lines, and a `.po` diff stops being readable.
+gettext folds a string carrying an embedded newline whatever the flag says, so
+nothing may assume an entry fits on one line -- the completeness test joins
+continuation lines for exactly that reason.
 
 The design journal is French and lives outside this repository (see
 "Design journal" below).

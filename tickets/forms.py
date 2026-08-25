@@ -67,7 +67,47 @@ class SchoolScopedMixin:
         super().__init__(*args, **kwargs)
 
 
-class TicketForm(VisibilityOptionsMixin, SchoolScopedMixin, forms.ModelForm):
+class RoomAndDeviceMixin:
+    """The room picker, and the machine list that follows it.
+
+    Two forms need exactly this pair -- the one that opens a ticket and the one
+    that corrects it (D-37) -- and what matters is the same in both: **the
+    device queryset is narrowed server-side**. The HTMX partial that repaints
+    the list when the room changes is a convenience; this queryset is what a
+    posted value is checked against, and a machine from another room is
+    refused here whatever the browser did.
+    """
+
+    def _bind_room_and_device(self, school):
+        self.fields["room"].queryset = Room.objects.filter(school=school, is_active=True)
+        # The machine list follows the room (D-17). htmx sends the select's own
+        # value, so the parameter name is simply the field name.
+        self.fields["room"].widget.attrs.update({
+            "class": "select w-full",
+            "hx-get": reverse_lazy("tickets:room_devices"),
+            "hx-trigger": "change",
+            "hx-target": "#id_device",
+            "hx-swap": "innerHTML",
+        })
+
+        # Every device of the room is offered, printers and servers included: a
+        # device's role gives it no standing here (see "Reporté" in
+        # specs/01-decisions.md).
+        devices = Device.objects.filter(school=school, is_active=True)
+        room = self.data.get("room") or self.initial.get("room")
+        if room:
+            devices = devices.filter(room_id=room)
+        elif self.instance.pk:
+            devices = devices.filter(room_id=self.instance.room_id)
+        else:
+            devices = devices.none()
+        self.fields["device"].queryset = devices
+        self.fields["device"].required = False
+        self.fields["device"].empty_label = _("No particular machine")
+        self.fields["device"].widget.attrs.update({"class": "select w-full"})
+
+
+class TicketForm(VisibilityOptionsMixin, SchoolScopedMixin, RoomAndDeviceMixin, forms.ModelForm):
     """Two fields and a button, with everything else folded away (D-35).
 
     The corridor is where most reports start: somebody says "R102 does not
@@ -112,35 +152,9 @@ class TicketForm(VisibilityOptionsMixin, SchoolScopedMixin, forms.ModelForm):
         super().__init__(*args, **kwargs)
         school = self.user.school
 
-        self.fields["room"].queryset = Room.objects.filter(school=school, is_active=True)
+        self._bind_room_and_device(school)
         self.fields["room"].empty_label = _("Choose a room")
         self._lift_recent_rooms()
-        # The machine list follows the room (D-17). htmx sends the select's own
-        # value, so the parameter name is simply the field name.
-        self.fields["room"].widget.attrs.update({
-            "class": "select w-full",
-            "hx-get": reverse_lazy("tickets:room_devices"),
-            "hx-trigger": "change",
-            "hx-target": "#id_device",
-            "hx-swap": "innerHTML",
-        })
-
-        # Narrowed to the chosen room, and to that room only. The HTMX partial
-        # that repaints this list is a convenience; this queryset is the rule.
-        # Every room is offered, printers and servers included: a device's role
-        # gives it no standing here (see "Reporté" in specs/01-decisions.md).
-        devices = Device.objects.filter(school=school, is_active=True)
-        room = self.data.get("room") or self.initial.get("room")
-        if room:
-            devices = devices.filter(room_id=room)
-        elif self.instance.pk:
-            devices = devices.filter(room_id=self.instance.room_id)
-        else:
-            devices = devices.none()
-        self.fields["device"].queryset = devices
-        self.fields["device"].required = False
-        self.fields["device"].empty_label = _("No particular machine")
-        self.fields["device"].widget.attrs.update({"class": "select w-full"})
 
         self.fields["priority"].widget.attrs.update({"class": "select w-full"})
         # Both carry a model default, and both are folded away (D-35). A
@@ -233,6 +247,47 @@ class TicketForm(VisibilityOptionsMixin, SchoolScopedMixin, forms.ModelForm):
             ticket.save()
             self.save_m2m()
         return ticket
+
+
+class TicketCorrectionForm(SchoolScopedMixin, RoomAndDeviceMixin, forms.ModelForm):
+    """What was mistyped, corrected afterwards (D-37).
+
+    People fill this in under pressure, between two lessons, and they get the
+    room wrong. A ticket filed on the wrong room is a ticket the next person
+    cannot find, and until now nothing in the application could move it -- the
+    room, the machine and the priority were settled at creation and never
+    again. Only the Django admin could touch them, which is to say: not the
+    people standing in the corridor.
+
+    Three fields and no more. The title and the description are the reporter's
+    own words and are corrected by adding a note, not by rewriting history;
+    visibility has its own form and its own rule (doc 08); the status has its
+    buttons.
+    """
+
+    class Meta:
+        model = Ticket
+        fields = ["room", "device", "priority"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._bind_room_and_device(self.user.school)
+        # A ticket always has a room, so there is nothing empty to offer -- and
+        # the rooms are listed plainly here, with no "recently reported" group:
+        # the room being corrected is a fact to look up, not a habit to guess.
+        self.fields["room"].empty_label = None
+        self.fields["priority"].widget.attrs.update({"class": "select w-full"})
+
+    def clean(self):
+        cleaned = super().clean()
+        # The label was frozen at creation so that a ticket from March still
+        # reads "204" after the room was renamed (doc 03). A correction is the
+        # other case entirely: the room was *wrong*, so the label was wrong
+        # with it, and re-freezing is what makes the ticket findable again.
+        room = cleaned.get("room")
+        if room and room.pk != self.instance.room_id:
+            self.instance.room_label = room.name
+        return cleaned
 
 
 class CommentForm(forms.ModelForm):

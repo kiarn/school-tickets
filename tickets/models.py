@@ -39,9 +39,23 @@ class Ticket(models.Model):
         CANCELLED = "cancelled", _("Cancelled")
 
     class Priority(models.TextChoices):
+        """Four levels, and the fourth was asked for by name (D-37).
+
+        ``urgent`` sits above ``high`` because two degrees of hurry exist in a
+        school and they are not the same sentence: "a class cannot happen right
+        now" against "do not let this wait a fortnight". The list view named
+        "Urgent" shows both -- it answers "what do I do next", and a `high`
+        ticket with nowhere to be seen would be a level nobody ever sets.
+
+        The order of declaration is the order of the picker. It is also the
+        only order: `priority` is a text column, so sorting on it sorts
+        alphabetically -- see ``PRIORITY_RANK`` in the views.
+        """
+
         LOW = "low", _("Low")
         NORMAL = "normal", _("Normal")
         HIGH = "high", _("High")
+        URGENT = "urgent", _("Urgent")
 
     school = models.ForeignKey("accounts.School", on_delete=models.PROTECT, related_name="tickets")
     room = models.ForeignKey("parc.Room", on_delete=models.PROTECT, related_name="tickets")
@@ -118,6 +132,22 @@ class Ticket(models.Model):
         if not self.room_label and self.room_id:
             self.room_label = self.room.name
         super().save(*args, **kwargs)
+
+    @property
+    def status_class(self) -> str:
+        """How the state is drawn, decided here rather than in two templates.
+
+        The colour is the state and nothing else (D-36): it is the one chip
+        left in the header, so no tag and no priority competes with it. These
+        are daisyUI's own component classes, not Tailwind utilities, which is
+        why they survive being written in Python -- the scanner only reads
+        ``templates/`` (D-18) but ``badge.css`` is imported whole.
+        """
+        return {
+            self.Status.OPEN: "badge-warning",
+            self.Status.IN_PROGRESS: "badge-info",
+            self.Status.RESOLVED: "badge-success",
+        }.get(self.status, "badge-ghost")
 
     @property
     def resolution_missing(self) -> bool:
