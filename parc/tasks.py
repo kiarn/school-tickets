@@ -12,7 +12,6 @@ import logging
 from django.conf import settings
 from django.utils import timezone
 
-from accounts.models import School
 from parc import sources
 from parc.inventory import apply_inventory
 from parc.lmnapi import Client, Forbidden, NotConfigured
@@ -63,7 +62,7 @@ def sweep_linbo() -> dict:
     """One collective call for the whole estate, then filing by MAC."""
     client = Client()
     try:
-        response = client.linbo_status_all(school="default-school")
+        response = client.linbo_status_all(school=settings.ST_DEFAULT_SCHOOL_SLUG)
     except NotConfigured as exc:
         logger.warning("lmnapi not configured: %s", exc)
         return {"skipped": "not_configured"}
@@ -109,6 +108,5 @@ def sync_inventory() -> dict:
         logger.warning("inventory sync held: %s", exc)
         return {"skipped": "awaiting_api_shape"}
 
-    school = School.objects.get(slug=settings.ST_DEFAULT_SCHOOL_SLUG)
-    run = apply_inventory(school, rows, source="lmnapi")
+    run = apply_inventory(rows, source="lmnapi")
     return {"status": run.status, "rooms": run.rooms_seen, "devices": run.devices_seen}

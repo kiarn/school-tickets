@@ -22,12 +22,9 @@ class TicketQuerySet(models.QuerySet):
         if not getattr(user, "is_authenticated", False) or not user.is_active:
             return self.none()
         return self.filter(
-            models.Q(school=user.school)
-            & (
-                models.Q(visibility__gte=clearance(user))
-                | models.Q(created_by=user)
-                | models.Q(assignees=user)
-            )
+            models.Q(visibility__gte=clearance(user))
+            | models.Q(created_by=user)
+            | models.Q(assignees=user)
         ).distinct()
 
 
@@ -42,7 +39,7 @@ class Ticket(models.Model):
         """Four levels, and the fourth was asked for by name (D-37).
 
         ``urgent`` sits above ``high`` because two degrees of hurry exist in a
-        school and they are not the same sentence: "a class cannot happen right
+        school, and they are not the same sentence: "a class cannot happen right
         now" against "do not let this wait a fortnight". The list view named
         "Urgent" shows both -- it answers "what do I do next", and a `high`
         ticket with nowhere to be seen would be a level nobody ever sets.
@@ -57,7 +54,6 @@ class Ticket(models.Model):
         HIGH = "high", _("High")
         URGENT = "urgent", _("Urgent")
 
-    school = models.ForeignKey("accounts.School", on_delete=models.PROTECT, related_name="tickets")
     room = models.ForeignKey("parc.Room", on_delete=models.PROTECT, related_name="tickets")
     device = models.ForeignKey(
         "parc.Device", on_delete=models.SET_NULL, null=True, blank=True, related_name="tickets"
@@ -126,7 +122,7 @@ class Ticket(models.Model):
     class Meta:
         indexes = [
             # The query behind every list.
-            models.Index(fields=["school", "visibility", "status"]),
+            models.Index(fields=["visibility", "status"]),
         ]
         ordering = ["-created_at"]
 
@@ -183,7 +179,7 @@ class TicketAssignee(models.Model):
 
 
 class Tag(models.Model):
-    # Always local to a school and never translated: they therefore never enter
+    # Local to this instance and never translated: they therefore never enter
     # the Crowdin catalogues (D-15).
 
     class Color(models.TextChoices):
@@ -209,7 +205,6 @@ class Tag(models.Model):
         WARNING = "warning", _("Warning")
         ERROR = "error", _("Error")
 
-    school = models.ForeignKey("accounts.School", on_delete=models.CASCADE, related_name="tags")
     slug = models.SlugField()
     name = models.CharField(max_length=100)
     color = models.CharField(
@@ -223,7 +218,7 @@ class Tag(models.Model):
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(fields=["school", "slug"], name="unique_tag_per_school")
+            models.UniqueConstraint(fields=["slug"], name="unique_tag_slug")
         ]
 
     def __str__(self):

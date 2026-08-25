@@ -3,7 +3,7 @@
 
 The dividing line is D-15's. **The catalogue belongs to the project**: its
 strings travel to Crowdin, so they are `msgid`s shipped with the code, not
-text a school types on a Tuesday. **A school's own badges belong here** --
+text somebody types on a Tuesday. **Locally invented badges belong here** --
 that is the whole reason `BadgeForm` exists in the application, and the
 reason this admin refuses to create anything shared.
 """
@@ -12,7 +12,7 @@ from django import forms
 from django.contrib import admin
 from django.utils.translation import gettext_lazy as _
 
-from accounts.models import AuditLog, School
+from accounts.models import AuditLog
 
 from .forms import unique_slug
 from .models import Badge, BadgeAward
@@ -37,26 +37,23 @@ class BadgeAdminForm(forms.ModelForm):
 
 @admin.register(Badge)
 class BadgeAdmin(admin.ModelAdmin):
-    """A school's own badges. The catalogue is read here, never written.
+    """Locally invented badges. The catalogue is read here, never written.
 
-    ``is_catalog`` and ``school`` are not offered at all -- the same refusal
-    `BadgeForm` already makes, for the same reason, and now with a database
-    constraint behind it. Left editable, they let somebody build a badge
-    flagged catalogue *and* attached to a school, or one attached to none
-    while not being catalogue -- which surfaced in every school's catalogue,
-    untranslated, with a slug carrying no school prefix.
+    ``is_catalog`` is not offered at all -- the same refusal `BadgeForm` makes,
+    for the same reason. Left editable, it let somebody flag a badge as
+    catalogue from here, which then surfaced in the catalogue untranslated.
     """
 
     form = BadgeAdminForm
-    list_display = ("name", "slug", "school", "is_catalog", "category", "award_count")
-    list_filter = ("is_catalog", "school", "category")
+    list_display = ("name", "slug", "is_catalog", "category", "award_count")
+    list_filter = ("is_catalog", "category")
     search_fields = ("slug", "name")
     ordering = ("-is_catalog", "category", "name")
 
     # award_count is editable on purpose, catalogue badge included: it is a
     # tally, and a tally occasionally needs a human correction (R-17).
     _own = ("name", "description", "icon", "category", "award_count")
-    _read = ("slug", "school", "is_catalog", "created_at")
+    _read = ("slug", "is_catalog", "created_at")
 
     fieldsets = (
         (None, {"fields": _own}),
@@ -72,19 +69,17 @@ class BadgeAdmin(admin.ModelAdmin):
             # Its `name` and `description` are the `msgid`s the .po files are
             # keyed on. Editing one here does not translate it and does not
             # fail either -- it silently orphans every translation of it.
-            # The tally is the exception: it counts what this school did.
+            # The tally is the exception: it counts what was done here.
             return self._read + ("name", "description", "icon", "category")
         return self._read
 
     def save_model(self, request, obj, form, change):
         if not change:
-            # What `BadgeForm.save()` does, and for the reasons written there:
-            # a badge invented by a school is never shared and never
-            # translated, and its slug carries the school so that two schools
-            # inventing the same name do not collide.
-            obj.school = School.objects.default()
+            # What `BadgeForm.save()` does, and for the reasons written
+            # there: a badge invented here is never shared and never
+            # translated.
             obj.is_catalog = False
-            obj.slug = unique_slug(obj.name, obj.school)
+            obj.slug = unique_slug(obj.name)
         super().save_model(request, obj, form, change)
 
 
@@ -99,7 +94,7 @@ class BadgeAwardAdmin(admin.ModelAdmin):
     here went around every rule `AwardForm` enforces. It set an arbitrary
     `awarded_by` where the application forces the signed-in admin; it reached
     people the application keeps out of the list, reporters included, since a
-    badge recognises a repair (D-10); it crossed schools; and it wrote no
+    badge recognises a repair (D-10); and it wrote no
     `BADGE_AWARD` line to the audit log, where the application writes one
     every time.
 

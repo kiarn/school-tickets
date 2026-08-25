@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The write side of a ticket.
 
-Every queryset here is bound to ``user.school`` at construction time. That is
-not decoration: a form field is a list of primary keys the browser posts back,
-so an unscoped queryset is an open door onto another school's estate. The rule
-is the same one as ``visible_to()`` on the read side -- nothing global, ever.
+Every queryset here is narrowed at construction time -- to the rooms that are
+in service, to the machines of the room being reported. That is not decoration:
+a form field is a list of primary keys the browser posts back, and whatever the
+queryset accepts is what the application accepts.
 """
 
 from django import forms
@@ -79,8 +79,8 @@ class RoomAndDeviceMixin:
     refused here whatever the browser did.
     """
 
-    def _bind_room_and_device(self, school):
-        self.fields["room"].queryset = Room.objects.filter(school=school, is_active=True)
+    def _bind_room_and_device(self):
+        self.fields["room"].queryset = Room.objects.filter(is_active=True)
         # The machine list follows the room (D-17). htmx sends the select's own
         # value, so the parameter name is simply the field name.
         self.fields["room"].widget.attrs.update({
@@ -94,7 +94,7 @@ class RoomAndDeviceMixin:
         # Every device of the room is offered, printers and servers included: a
         # device's role gives it no standing here (see "Reporté" in
         # specs/01-decisions.md).
-        devices = Device.objects.filter(school=school, is_active=True)
+        devices = Device.objects.filter(is_active=True)
         room = self.data.get("room") or self.initial.get("room")
         if room:
             devices = devices.filter(room_id=room)
@@ -151,9 +151,7 @@ class TicketForm(VisibilityOptionsMixin, SchoolScopedMixin, RoomAndDeviceMixin, 
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        school = self.user.school
-
-        self._bind_room_and_device(school)
+        self._bind_room_and_device()
         self.fields["room"].empty_label = _("Choose a room")
         self._lift_recent_rooms()
 
@@ -165,7 +163,7 @@ class TicketForm(VisibilityOptionsMixin, SchoolScopedMixin, RoomAndDeviceMixin, 
         self.fields["priority"].required = False
         self.fields["visibility"].required = False
 
-        self.fields["tags"].queryset = Tag.objects.filter(school=school)
+        self.fields["tags"].queryset = Tag.objects.all()
         self.fields["tags"].required = False
 
         self.fields["visibility"].choices = creation_visibilities(self.user)
@@ -184,8 +182,8 @@ class TicketForm(VisibilityOptionsMixin, SchoolScopedMixin, RoomAndDeviceMixin, 
         a list that is neither alphabetical nor grouped reads as broken.
 
         ``choices`` is replaced, ``queryset`` is not: validation still goes
-        through the full, school-scoped queryset, so nothing here can widen
-        what may be posted.
+        through the full queryset, so nothing here can widen what may be
+        posted.
         """
         recent = list(
             self.fields["room"].queryset
@@ -239,7 +237,6 @@ class TicketForm(VisibilityOptionsMixin, SchoolScopedMixin, RoomAndDeviceMixin, 
 
     def save(self, commit=True):
         ticket = super().save(commit=False)
-        ticket.school = self.user.school
         ticket.created_by = self.user
         # Frozen at creation, on purpose: a ticket from March keeps reading
         # "204" after the room becomes A204 (doc 03).
@@ -282,7 +279,7 @@ class TicketCorrectionForm(SchoolScopedMixin, RoomAndDeviceMixin, forms.ModelFor
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._bind_room_and_device(self.user.school)
+        self._bind_room_and_device()
         # A ticket always has a room, so there is nothing empty to offer -- and
         # the rooms are listed plainly here, with no "recently reported" group:
         # the room being corrected is a fact to look up, not a habit to guess.

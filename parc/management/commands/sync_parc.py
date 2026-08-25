@@ -2,17 +2,15 @@
 """One inventory pass, by hand. The worker does the same thing in a loop.
 
 ``--from-file`` is not a development toy: doc 03 makes a hand-uploaded
-``devices.csv`` a first-class source, the fallback for a school whose lmnapi
+``devices.csv`` a first-class source, the fallback where lmnapi
 is out of reach. It goes through the very same reconciliation as the API, so
 what is exercised here is what will run in production.
 """
 
 from pathlib import Path
 
-from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
-from accounts.models import School
 from parc import sources, tasks
 from parc.inventory import apply_inventory
 
@@ -25,11 +23,6 @@ class Command(BaseCommand):
             "--from-file",
             metavar="PATH",
             help="read a sophomorix devices.csv instead of calling lmnapi",
-        )
-        parser.add_argument(
-            "--school",
-            default=settings.ST_DEFAULT_SCHOOL_SLUG,
-            help="school slug (default: %(default)s)",
         )
         parser.add_argument(
             "--dry-run",
@@ -62,12 +55,7 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING("dry run -- nothing written"))
             return
 
-        try:
-            school = School.objects.get(slug=opts["school"])
-        except School.DoesNotExist:
-            raise CommandError(f"unknown school: {opts['school']}") from None
-
-        run = apply_inventory(school, estate.rows, source="csv_upload")
+        run = apply_inventory(estate.rows, source="csv_upload")
 
         line = f"{run.status}: {run.rooms_seen} room(s), {run.devices_seen} device(s)"
         if run.status == run.Status.REFUSED_GUARD:

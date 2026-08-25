@@ -274,7 +274,7 @@ def store(upload, *, ticket, user, comment=None):
 
     now = timezone.localtime()
     relative = Path(
-        "attachments", ticket.school.slug, f"{now:%Y}", f"{now:%m}",
+        "attachments", f"{now:%Y}", f"{now:%m}",
         f"{uuid.uuid4().hex}{extension}",
     )
     absolute = Path(settings.MEDIA_ROOT) / relative
@@ -314,7 +314,7 @@ def resolved_path(attachment) -> Path:
     """Where the bytes are -- refusing anything that is not under MEDIA_ROOT.
 
     ``store()`` above is the only writer of ``storage_path``, and it writes a
-    uuid under ``attachments/<school>/<year>/<month>/``. But it is a plain text
+    uuid under ``attachments/<year>/<month>/``. But it is a plain text
     column, and every reader joined it onto ``MEDIA_ROOT`` and opened whatever
     came out. One editable form away -- the Django admin offered exactly that
     -- and database access became arbitrary file access.

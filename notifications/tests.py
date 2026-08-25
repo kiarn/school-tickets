@@ -15,7 +15,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from accounts.authz import Role, Visibility
-from accounts.models import PushSubscription, School, User
+from accounts.models import PushSubscription, User
 from notifications import delivery, events
 from notifications.models import Delivery, Kind, Mute, Notification
 from parc.models import Room
@@ -25,12 +25,11 @@ from tickets.models import Comment, Ticket, TicketAssignee
 class Base(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.school = School.objects.create(slug="lycee", name="Lycee")
-        cls.room = Room.objects.create(school=cls.school, name="204")
+        cls.room = Room.objects.create(name="204")
 
         def person(cn, role):
             return User.objects.enroll(
-                school=cls.school, cn=cn, role=role, display_name=cn
+                cn=cn, role=role, display_name=cn
             )
 
         cls.admin = person("admin", Role.ADMIN)
@@ -40,7 +39,7 @@ class Base(TestCase):
 
     def ticket(self, **kwargs):
         fields = {
-            "school": self.school, "room": self.room, "room_label": "204",
+            "room": self.room, "room_label": "204",
             "title": "Black screen", "visibility": Visibility.TEAM,
             "created_by": self.lea,
         }
@@ -103,8 +102,8 @@ class FanoutTests(Base):
 
     def test_a_pending_queue_is_announced_once_not_every_hour(self):
         """Re-notifying about the same unread queue is how a channel gets muted."""
-        events.sync_decisions_pending(self.school, count=3)
-        events.sync_decisions_pending(self.school, count=3)
+        events.sync_decisions_pending(count=3)
+        events.sync_decisions_pending(count=3)
         self.assertEqual(Notification.objects.filter(kind=Kind.SYNC_DECISIONS).count(), 1)
 
 
@@ -141,7 +140,7 @@ class ViewWiringTests(Base):
         """Moving a ticket to the room it should have been filed under is
         bookkeeping: nobody has anything to do about it (doc 09 §4)."""
         ticket = self.ticket(priority=Ticket.Priority.URGENT)
-        other = Room.objects.create(school=self.school, name="205")
+        other = Room.objects.create(name="205")
         self.client.force_login(self.lea)
         self.client.post(reverse("tickets:correct", args=[ticket.pk]), {
             "room": other.pk, "priority": Ticket.Priority.URGENT,

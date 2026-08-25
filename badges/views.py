@@ -18,7 +18,7 @@ its worth.
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.db import models, transaction
+from django.db import transaction
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.translation import gettext as _
@@ -39,14 +39,12 @@ def _admin_or_404(user):
 @login_required
 def catalog(request):
     """What exists and how it is earned. Nothing about people."""
-    badges = Badge.objects.filter(
-        models.Q(school=request.user.school) | models.Q(school__isnull=True)
-    ).order_by("-is_catalog", "category", "name")
+    badges = Badge.objects.order_by("-is_catalog", "category", "name")
     is_admin = Role(request.user.role) in ADMIN_ROLES
     return render(request, "badges/catalog.html", {
         "badges": badges,
         "is_admin": is_admin,
-        "form": BadgeForm(school=request.user.school) if is_admin else None,
+        "form": BadgeForm() if is_admin else None,
     })
 
 
@@ -55,11 +53,9 @@ def badge_create(request):
     _admin_or_404(request.user)
     if request.method != "POST":
         return redirect("badges:catalog")
-    form = BadgeForm(request.POST, school=request.user.school)
+    form = BadgeForm(request.POST)
     if not form.is_valid():
-        badges = Badge.objects.filter(
-            models.Q(school=request.user.school) | models.Q(school__isnull=True)
-        ).order_by("-is_catalog", "category", "name")
+        badges = Badge.objects.order_by("-is_catalog", "category", "name")
         return render(request, "badges/catalog.html", {
             "badges": badges, "is_admin": True, "form": form,
         })
@@ -78,7 +74,7 @@ def award(request, pk=None):
     _admin_or_404(request.user)
     person = None
     if pk is not None:
-        person = get_object_or_404(User, pk=pk, school=request.user.school)
+        person = get_object_or_404(User, pk=pk)
 
     form = AwardForm(
         request.POST or None, awarded_by=request.user, person=person

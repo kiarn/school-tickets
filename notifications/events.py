@@ -45,20 +45,20 @@ def _fanout(kind, *, recipients, ticket=None, actor=None) -> int:
     return len(rows)
 
 
-def _team(school):
+def _team():
     """The people who repair. `reporter` is absent, and that is doc 09 §3:
     a teacher who reported a projector has no use for the estate's traffic."""
     from accounts.models import User
 
     return User.objects.filter(
-        school=school, is_active=True, role__in=[role.value for role in WORKING_ROLES]
+        is_active=True, role__in=[role.value for role in WORKING_ROLES]
     )
 
 
 def ticket_opened(ticket) -> int:
     """The recruitment notification: without it a ticket reaches nobody."""
     recipients = [
-        person for person in _team(ticket.school) if _may_read(person, ticket)
+        person for person in _team() if _may_read(person, ticket)
     ]
     return _fanout(Kind.TICKET_OPENED, recipients=recipients, ticket=ticket,
                    actor=ticket.created_by)
@@ -103,7 +103,7 @@ def escalated(ticket, *, actor) -> int:
     Deliberately outside ``GROUPED``: grouping exists to spare people the
     traffic of ordinary tickets, and this is the opposite of ordinary.
     """
-    recipients = [person for person in _team(ticket.school) if _may_read(person, ticket)]
+    recipients = [person for person in _team() if _may_read(person, ticket)]
     return _fanout(Kind.ESCALATED, recipients=recipients, ticket=ticket, actor=actor)
 
 
@@ -118,7 +118,7 @@ def _involved(ticket):
     return [person for person in people.values() if _may_read(person, ticket)]
 
 
-def sync_decisions_pending(school, *, count) -> int:
+def sync_decisions_pending(*, count) -> int:
     """The only event with no ticket behind it. Admins only: they are the only
     people who can act on the queue (doc 03)."""
     from accounts.models import User
@@ -126,7 +126,7 @@ def sync_decisions_pending(school, *, count) -> int:
     if not count:
         return 0
     admins = User.objects.filter(
-        school=school, is_active=True, role__in=[role.value for role in ADMIN_ROLES]
+        is_active=True, role__in=[role.value for role in ADMIN_ROLES]
     )
     # One pending queue, one notification per pass: re-notifying every hour
     # about the same unread queue is how a channel gets muted.

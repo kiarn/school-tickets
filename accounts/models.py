@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Foundation: school, enrolled people, audit log. See specs/02-modele-donnees.md."""
+"""Foundation: enrolled people and the audit log. See specs/02-modele-donnees.md."""
 
 from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
@@ -10,34 +10,8 @@ from django.utils.translation import gettext_lazy as _
 from .authz import ADMIN_ROLES, Role
 
 
-class SchoolManager(models.Manager):
-    def default(self):
-        """The one school this instance serves (D-30).
-
-        Resolved as ``manage.py enroll`` resolves it, minus the
-        ``get_or_create``: every caller runs behind a login, which means an
-        account exists, which means a school does. The fallback on the first
-        row covers an instance whose ``ST_DEFAULT_SCHOOL`` was renamed after
-        the fact rather than at install time.
-        """
-        return self.filter(slug=settings.ST_DEFAULT_SCHOOL_SLUG).first() or self.first()
-
-
-class School(models.Model):
-    """D-06: the school concept exists from the very first migration."""
-
-    slug = models.SlugField(unique=True)
-    name = models.CharField(max_length=200)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    objects = SchoolManager()
-
-    def __str__(self):
-        return self.name
-
-
 class UserManager(BaseUserManager):
-    def enroll(self, *, school, cn, role=Role.REPORTER, display_name="", email="",
+    def enroll(self, *, cn, role=Role.REPORTER, display_name="", email="",
                enrolled_by=None):
         """Enrol a person BEFORE their first login (D-22).
 
@@ -45,7 +19,6 @@ class UserManager(BaseUserManager):
         login, by matching on the ``cn``.
         """
         user = self.model(
-            school=school,
             cn=cn,
             role=role,
             display_name=display_name,
@@ -65,16 +38,14 @@ class User(AbstractBaseUser, PermissionsMixin):
     comments behind: nothing here may require an LDAP round trip.
     """
 
-    school = models.ForeignKey(School, on_delete=models.PROTECT, related_name="users")
-
     # Pivot identity. NULL as long as an enrolled person has never logged in
     # (D-22); unique only when set.
     oidc_sub = models.CharField(max_length=255, unique=True, null=True, blank=True, default=None)
     # Used for the initial match, once only. **NULL** on a tombstone, and not
-    # the empty string: several erased people share a school, and a unique
-    # constraint counts every "" as the same value while it counts every NULL
-    # as its own. That is what lets the constraint below drop its condition --
-    # see the note there.
+    # the empty string: a unique constraint counts every "" as the same value
+    # while it counts every NULL as its own, so several erased people would
+    # collide on the empty string. That is what lets the constraint below drop
+    # its condition -- see the note there.
     cn = models.CharField(max_length=150, blank=True, null=True, default=None)
 
     display_name = models.CharField(max_length=200, blank=True)
@@ -135,7 +106,7 @@ class User(AbstractBaseUser, PermissionsMixin):
             #
             # Carrying the exception in the data instead of in the constraint
             # costs one NULL and works identically on both engines.
-            models.UniqueConstraint(fields=["school", "cn"], name="unique_cn_per_school"),
+            models.UniqueConstraint(fields=["cn"], name="unique_cn"),
         ]
 
     def __str__(self):

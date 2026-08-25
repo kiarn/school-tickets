@@ -13,7 +13,6 @@ Django's own ``changepassword`` is no use here -- it looks accounts up by
 
 from getpass import getpass
 
-from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
 from accounts.models import User
@@ -24,7 +23,6 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("--cn", required=True, help="linuxmuster login")
-        parser.add_argument("--school", default=None, help="school slug")
         parser.add_argument(
             "--password",
             default=None,
@@ -37,10 +35,9 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **opts):
-        slug = opts["school"] or settings.ST_DEFAULT_SCHOOL_SLUG
         try:
             user = User.objects.get(
-                school__slug=slug, cn=opts["cn"], anonymized_at__isnull=True
+                cn=opts["cn"], anonymized_at__isnull=True
             )
         except User.DoesNotExist:
             raise CommandError(

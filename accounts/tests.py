@@ -9,7 +9,7 @@ from django.urls import reverse
 
 from accounts import backends
 from accounts.authz import Role, Visibility
-from accounts.models import AuditLog, PushSubscription, School, User
+from accounts.models import AuditLog, PushSubscription, User
 from badges.models import Badge, BadgeAward
 from parc.models import Room
 from tickets.models import Ticket, TicketAssignee
@@ -18,24 +18,19 @@ from tickets.models import Ticket, TicketAssignee
 class ProfileTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.school = School.objects.create(slug="lycee", name="Lycee")
-        cls.other_school = School.objects.create(slug="other", name="Other")
         cls.member = User.objects.enroll(
-            school=cls.school, cn="pupil", role=Role.MEMBER, display_name="Lea"
+            cn="pupil", role=Role.MEMBER, display_name="Lea"
         )
         cls.other_member = User.objects.enroll(
-            school=cls.school, cn="pupil2", role=Role.MEMBER, display_name="Nils"
+            cn="pupil2", role=Role.MEMBER, display_name="Nils"
         )
         cls.admin = User.objects.enroll(
-            school=cls.school, cn="admin", role=Role.ADMIN, display_name="Admin"
-        )
-        cls.foreign_admin = User.objects.enroll(
-            school=cls.other_school, cn="elsewhere", role=Role.ADMIN
+            cn="admin", role=Role.ADMIN, display_name="Admin"
         )
 
     def test_a_profile_shows_its_badges_with_the_sentence_that_came_with_them(self):
         badge = Badge.objects.create(
-            slug="first-hdmi", school=self.school, name="First HDMI fault",
+            slug="first-hdmi", name="First HDMI fault",
             icon="🔌",
         )
         BadgeAward.objects.create(
@@ -47,7 +42,7 @@ class ProfileTests(TestCase):
         self.assertContains(response, "First HDMI fault")
         self.assertContains(response, "bent pin")
 
-    def test_an_admin_may_open_anybody_in_their_school(self):
+    def test_an_admin_may_open_anybody(self):
         self.client.force_login(self.admin)
         response = self.client.get(
             reverse("accounts:profile_detail", args=[self.member.pk])
@@ -63,14 +58,6 @@ class ProfileTests(TestCase):
         )
         self.assertEqual(response.status_code, 404)
 
-    def test_an_admin_of_another_school_may_not_either(self):
-        """Being an administrator is not a passport between schools."""
-        self.client.force_login(self.foreign_admin)
-        response = self.client.get(
-            reverse("accounts:profile_detail", args=[self.member.pk])
-        )
-        self.assertEqual(response.status_code, 404)
-
     def test_my_own_id_lands_on_my_own_profile(self):
         self.client.force_login(self.member)
         response = self.client.get(reverse("accounts:profile_detail", args=[self.member.pk]))
@@ -82,9 +69,8 @@ class LanguageTests(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        cls.school = School.objects.create(slug="lycee", name="Lycee")
         cls.person = User.objects.enroll(
-            school=cls.school, cn="pupil", role=Role.MEMBER, display_name="Lea"
+            cn="pupil", role=Role.MEMBER, display_name="Lea"
         )
 
     def test_choosing_a_language_applies_to_the_next_page(self):
@@ -122,9 +108,8 @@ class LoginTests(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        cls.school = School.objects.create(slug="lycee", name="Lycee")
         cls.person = User.objects.enroll(
-            school=cls.school, cn="pupil", role=Role.MEMBER, display_name="Lea"
+            cn="pupil", role=Role.MEMBER, display_name="Lea"
         )
         cls.person.set_password("correct horse")
         cls.person.save()
@@ -169,7 +154,7 @@ class LoginTests(TestCase):
 
     def test_an_account_with_no_password_cannot_be_guessed_into(self):
         """enroll() sets an unusable password; that must not match "" either."""
-        other = User.objects.enroll(school=self.school, cn="fresh", role=Role.MEMBER)
+        other = User.objects.enroll(cn="fresh", role=Role.MEMBER)
         for attempt in ("", "!", other.password):
             self.post(cn="fresh", password=attempt)
             self.assertNotIn("_auth_user_id", self.client.session)
@@ -215,9 +200,8 @@ class ThemeTests(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        cls.school = School.objects.create(slug="lycee", name="Lycee")
         cls.person = User.objects.enroll(
-            school=cls.school, cn="admin", role=Role.ADMIN, display_name="Admin"
+            cn="admin", role=Role.ADMIN, display_name="Admin"
         )
 
     def test_no_preference_leaves_the_device_in_charge(self):
@@ -276,12 +260,8 @@ class AdminRoleTests(TestCase):
     page -- no error, no refusal, just nothing.
     """
 
-    @classmethod
-    def setUpTestData(cls):
-        cls.school = School.objects.create(slug="lycee", name="Lycee")
-
     def person(self, cn, role):
-        return User.objects.enroll(school=self.school, cn=cn, role=role)
+        return User.objects.enroll(cn=cn, role=role)
 
     def test_an_admin_is_a_django_superuser_and_can_actually_do_something_there(self):
         admin = self.person("boss", Role.ADMIN)
@@ -349,8 +329,7 @@ class AdminEnrolmentTests(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        cls.school = School.objects.create(slug="default-school", name="Lycee")
-        cls.boss = User.objects.enroll(school=cls.school, cn="boss", role=Role.ADMIN)
+        cls.boss = User.objects.enroll(cn="boss", role=Role.ADMIN)
 
     def setUp(self):
         self.client.force_login(self.boss)
@@ -383,7 +362,6 @@ class AdminEnrolmentTests(TestCase):
             reverse("admin:accounts_user_add"), {"cn": "neu", "role": Role.MEMBER}
         )
         person = User.objects.get(cn="neu")
-        self.assertEqual(person.school, self.school)
         self.assertEqual(person.enrolled_by, self.boss)
         self.assertIsNotNone(person.enrolled_at)
         # No password, rather than one nobody can use: `manage.py set_password`
@@ -408,7 +386,7 @@ class AdminEnrolmentTests(TestCase):
         self.assertTrue(person.is_superuser)
 
     def test_a_second_enrolment_under_the_same_login_is_a_sentence_not_a_500(self):
-        User.objects.enroll(school=self.school, cn="neu", role=Role.MEMBER)
+        User.objects.enroll(cn="neu", role=Role.MEMBER)
         page = self.client.post(
             reverse("admin:accounts_user_add"), {"cn": "neu", "role": Role.MEMBER}
         )
@@ -417,7 +395,7 @@ class AdminEnrolmentTests(TestCase):
                              "neu is already enrolled.")
 
     def test_a_bound_account_keeps_its_cn_and_a_tombstone_keeps_everything(self):
-        person = User.objects.enroll(school=self.school, cn="neu", role=Role.MEMBER)
+        person = User.objects.enroll(cn="neu", role=Role.MEMBER)
         admin_class = django_admin.site._registry[User]
         # Correctable while it is only a claim somebody typed.
         self.assertNotIn("cn", admin_class.get_readonly_fields(None, person))
@@ -442,21 +420,20 @@ class ErasureTests(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        cls.school = School.objects.create(slug="lycee", name="Lycee")
-        cls.room = Room.objects.create(school=cls.school, name="A101", sort_key="1-101")
-        cls.boss = User.objects.enroll(school=cls.school, cn="boss", role=Role.ADMIN)
+        cls.room = Room.objects.create(name="A101", sort_key="1-101")
+        cls.boss = User.objects.enroll(cn="boss", role=Role.ADMIN)
 
     def setUp(self):
         self.pupil = User.objects.enroll(
-            school=self.school, cn="pupil", role=Role.MEMBER, display_name="Lena"
+            cn="pupil", role=Role.MEMBER, display_name="Lena"
         )
         self.ticket = Ticket.objects.create(
-            school=self.school, room=self.room, title="Beamer",
+            room=self.room, title="Beamer",
             visibility=Visibility.TEAM, created_by=self.boss,
         )
         TicketAssignee.objects.create(ticket=self.ticket, user=self.pupil)
         BadgeAward.objects.create(
-            badge=Badge.objects.create(slug="lycee-x", school=self.school, name="X"),
+            badge=Badge.objects.create(slug="lycee-x", name="X"),
             user=self.pupil, awarded_by=self.boss,
         )
         PushSubscription.objects.create(
@@ -495,36 +472,32 @@ class TombstoneUniquenessTests(TestCase):
     instead behaves identically on both engines.
     """
 
-    @classmethod
-    def setUpTestData(cls):
-        cls.school = School.objects.create(slug="lycee", name="Lycee")
-
     def test_an_erased_account_keeps_no_cn_at_all(self):
-        person = User.objects.enroll(school=self.school, cn="lena", role=Role.MEMBER)
+        person = User.objects.enroll(cn="lena", role=Role.MEMBER)
         person.anonymize()
         person.refresh_from_db()
         self.assertIsNone(person.cn)
 
-    def test_a_school_may_bury_more_than_one_person(self):
+    def test_more_than_one_person_may_be_buried(self):
         """The case that forced the condition, and now needs none."""
         for cn in ("lena", "jonas", "mira"):
-            User.objects.enroll(school=self.school, cn=cn, role=Role.MEMBER).anonymize()
+            User.objects.enroll(cn=cn, role=Role.MEMBER).anonymize()
         self.assertEqual(User.objects.filter(cn__isnull=True).count(), 3)
 
     def test_two_live_accounts_still_may_not_share_a_login(self):
-        User.objects.enroll(school=self.school, cn="lena", role=Role.MEMBER)
+        User.objects.enroll(cn="lena", role=Role.MEMBER)
         with self.assertRaises(IntegrityError):
-            User.objects.enroll(school=self.school, cn="lena", role=Role.MEMBER)
+            User.objects.enroll(cn="lena", role=Role.MEMBER)
 
     def test_the_constraint_carries_no_condition_so_mariadb_creates_it(self):
         """The regression this whole change exists to prevent."""
         constraint = next(
-            c for c in User._meta.constraints if c.name == "unique_cn_per_school"
+            c for c in User._meta.constraints if c.name == "unique_cn"
         )
         self.assertIsNone(constraint.condition)
 
     def test_a_login_freed_by_an_erasure_can_be_enrolled_again(self):
         """The school reassigns a cn; the newcomer inherits no history (D-22)."""
-        User.objects.enroll(school=self.school, cn="lena", role=Role.MEMBER).anonymize()
-        newcomer = User.objects.enroll(school=self.school, cn="lena", role=Role.MEMBER)
+        User.objects.enroll(cn="lena", role=Role.MEMBER).anonymize()
+        newcomer = User.objects.enroll(cn="lena", role=Role.MEMBER)
         self.assertEqual(newcomer.badge_awards.count(), 0)

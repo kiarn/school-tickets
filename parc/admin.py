@@ -1,19 +1,20 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from django.contrib import admin
 
+
 from .models import Device, DeviceStatus, Room, SyncDecision, SyncRun
 
 
 @admin.register(Room)
 class RoomAdmin(admin.ModelAdmin):
-    list_display = ("name", "building", "school", "is_active", "last_synced_at")
-    list_filter = ("school", "is_active")
+    list_display = ("name", "building", "is_active", "last_synced_at")
+    list_filter = ("is_active",)
 
 
 @admin.register(Device)
 class DeviceAdmin(admin.ModelAdmin):
     list_display = ("hostname", "mac", "room", "is_active", "last_synced_at")
-    list_filter = ("school", "room", "is_active")
+    list_filter = ("room", "is_active")
     search_fields = ("hostname", "mac")
 
 

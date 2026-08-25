@@ -2,7 +2,6 @@
 """Awarding, and creating a badge of one's own. Both admin-only (D-24)."""
 
 from django import forms
-from django.db import models
 from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 
@@ -30,17 +29,14 @@ class AwardForm(forms.ModelForm):
     def __init__(self, *args, awarded_by, person=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.awarded_by = awarded_by
-        school = awarded_by.school
 
-        self.fields["badge"].queryset = Badge.objects.filter(
-            models.Q(school=school) | models.Q(school__isnull=True)
-        ).order_by("-is_catalog", "name")
+        self.fields["badge"].queryset = Badge.objects.order_by("-is_catalog", "name")
         self.fields["badge"].widget.attrs.update({"class": "select w-full"})
 
         # Reporters are not in the list: a badge recognises a repair (D-10),
         # and reporting is not repairing.
         people = User.objects.filter(
-            school=school, is_active=True, role__in=[role.value for role in WORKING_ROLES]
+            is_active=True, role__in=[role.value for role in WORKING_ROLES]
         ).order_by("display_name", "cn")
         self.fields["user"].queryset = people
         self.fields["user"].widget.attrs.update({"class": "select w-full"})
@@ -84,11 +80,11 @@ class AwardForm(forms.ModelForm):
 
 
 class BadgeForm(forms.ModelForm):
-    """A badge invented by one school. Never a catalogue badge.
+    """A badge invented here. Never a catalogue badge.
 
-    ``is_catalog`` and ``school = NULL`` are not offered on purpose: a shared
-    badge means a string in the Crowdin catalogues (D-15), which is a decision
-    about the project, not about one school's afternoon.
+    ``is_catalog`` is not offered on purpose: a shared badge means a string in
+    the Crowdin catalogues (D-15), which is a decision about the project, not
+    about one afternoon in one establishment.
     """
 
     class Meta:
@@ -108,36 +104,36 @@ class BadgeForm(forms.ModelForm):
             "category": forms.TextInput(attrs={"class": "input w-full"}),
         }
 
-    def __init__(self, *args, school, **kwargs):
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.school = school
         self.fields["description"].required = False
         self.fields["icon"].required = False
         self.fields["category"].required = False
 
     def clean_name(self):
         name = self.cleaned_data["name"]
-        if Badge.objects.filter(school=self.school, name=name).exists():
-            raise forms.ValidationError(_("This school already has a badge by that name."))
+        if Badge.objects.filter(name=name).exists():
+            raise forms.ValidationError(_("A badge by that name already exists."))
         return name
 
     def save(self, commit=True):
         badge = super().save(commit=False)
-        badge.school = self.school
         badge.is_catalog = False
-        badge.slug = unique_slug(badge.name, self.school)
+        badge.slug = unique_slug(badge.name)
         if commit:
             badge.save()
         return badge
 
 
-def unique_slug(name: str, school) -> str:
-    """``Badge.slug`` is unique across every school, catalogue included.
+def unique_slug(name: str) -> str:
+    """``Badge.slug`` is unique across the instance, catalogue included.
 
-    Two schools inventing "Premier poste installé" must not collide, so the
-    school's own slug goes into the value.
+    It used to carry the school as a prefix, so that two establishments
+    inventing "Premier poste installé" would not collide (D-49 removed the
+    school). The numeric suffix below already covered the remaining case: a
+    locally invented badge landing on the slug of a shipped one.
     """
-    base = f"{school.slug}-{slugify(name)}"[:45] or f"{school.slug}-badge"
+    base = slugify(name)[:45] or "badge"
     candidate, suffix = base, 2
     while Badge.objects.filter(slug=candidate).exists():
         candidate = f"{base}-{suffix}"

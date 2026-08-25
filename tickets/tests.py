@@ -25,7 +25,7 @@ from accounts.authz import (
     can_widen,
     visibility_targets,
 )
-from accounts.models import AuditLog, School, User
+from accounts.models import AuditLog, User
 from parc.models import Device, Room
 from tickets import attachments
 from tickets.forms import TicketForm
@@ -35,22 +35,18 @@ from tickets.models import Attachment, Comment, Tag, Ticket, TicketAssignee, Tic
 class VisibilityTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.school = School.objects.create(slug="lycee", name="Lycee")
-        cls.other_school = School.objects.create(slug="other", name="Other")
-        cls.room = Room.objects.create(school=cls.school, name="204")
+        cls.room = Room.objects.create(name="204")
 
-        def person(cn, role, school=None):
-            return User.objects.enroll(school=school or cls.school, cn=cn, role=role)
+        def person(cn, role):
+            return User.objects.enroll(cn=cn, role=role)
 
         cls.admin = person("admin", Role.ADMIN)
         cls.member = person("pupil", Role.MEMBER)
         cls.reporter = person("teacher", Role.REPORTER)
         cls.other_member = person("pupil2", Role.MEMBER)
-        cls.outsider = person("elsewhere", Role.ADMIN, school=cls.other_school)
 
         def ticket(visibility, author=None):
             return Ticket.objects.create(
-                school=cls.school,
                 room=cls.room,
                 room_label="204",
                 title=f"t{visibility}",
@@ -77,7 +73,6 @@ class VisibilityTests(TestCase):
     def test_author_keeps_their_own_ticket(self):
         """Without this clause a cautious default would blind a reporting teacher."""
         mine = Ticket.objects.create(
-            school=self.school,
             room=self.room,
             room_label="204",
             title="mine",
@@ -105,10 +100,6 @@ class VisibilityTests(TestCase):
         self.member.is_active = False
         self.assertEqual(self.visible(self.member), set())
 
-    def test_schools_are_partitioned(self):
-        """A global admin of another school sees nothing here (D-06)."""
-        self.assertEqual(self.visible(self.outsider), set())
-
     def test_anonymising_cuts_access(self):
         self.member.anonymize()
         self.assertEqual(self.visible(self.member), set())
@@ -117,14 +108,12 @@ class VisibilityTests(TestCase):
 class ViewTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.school = School.objects.create(slug="lycee", name="Lycee")
-        cls.room = Room.objects.create(school=cls.school, name="204")
-        cls.reporter = User.objects.enroll(school=cls.school, cn="teacher", role=Role.REPORTER)
+        cls.room = Room.objects.create(name="204")
+        cls.reporter = User.objects.enroll(cn="teacher", role=Role.REPORTER)
         cls.reporter.oidc_sub = "sub-teacher"
         cls.reporter.save()
-        cls.admin = User.objects.enroll(school=cls.school, cn="admin", role=Role.ADMIN)
+        cls.admin = User.objects.enroll(cn="admin", role=Role.ADMIN)
         cls.hidden = Ticket.objects.create(
-            school=cls.school,
             room=cls.room,
             room_label="204",
             title="classified",
@@ -160,9 +149,8 @@ class ViewTests(TestCase):
 class AsymmetryTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.school = School.objects.create(slug="lycee", name="Lycee")
-        cls.member = User.objects.enroll(school=cls.school, cn="pupil", role=Role.MEMBER)
-        cls.admin = User.objects.enroll(school=cls.school, cn="admin", role=Role.ADMIN)
+        cls.member = User.objects.enroll(cn="pupil", role=Role.MEMBER)
+        cls.admin = User.objects.enroll(cn="admin", role=Role.ADMIN)
 
     def test_widening_is_reserved_to_admins(self):
         self.assertFalse(can_widen(self.member))
@@ -174,10 +162,10 @@ class AsymmetryTests(TestCase):
         Any reader used to be able to restrict any ticket, which made a
         stranger's report vanish from the team's list with nothing said.
         """
-        author = User.objects.enroll(school=self.school, cn="teacher", role=Role.REPORTER)
-        room = Room.objects.create(school=self.school, name="204")
+        author = User.objects.enroll(cn="teacher", role=Role.REPORTER)
+        room = Room.objects.create(name="204")
         ticket = Ticket.objects.create(
-            school=self.school, room=room, room_label="204", title="Damage",
+            room=room, room_label="204", title="Damage",
             visibility=Visibility.TEAM, created_by=author,
         )
         # The author restricts, and down to admins-only: the author clause of
@@ -193,24 +181,21 @@ class AsymmetryTests(TestCase):
 
 
 class EnrolmentTests(TestCase):
-    def setUp(self):
-        self.school = School.objects.create(slug="lycee", name="Lycee")
-
     def test_enrolled_without_sub_then_bound(self):
-        user = User.objects.enroll(school=self.school, cn="arnaud", role=Role.ADMIN)
+        user = User.objects.enroll(cn="arnaud", role=Role.ADMIN)
         self.assertIsNone(user.oidc_sub)
         user.bind_oidc_sub("sub-123")
         self.assertEqual(User.objects.get(pk=user.pk).oidc_sub, "sub-123")
 
     def test_a_bound_sub_never_reattaches_to_somebody_else(self):
         """A reassigned cn must not inherit a former member's history."""
-        user = User.objects.enroll(school=self.school, cn="arnaud")
+        user = User.objects.enroll(cn="arnaud")
         user.bind_oidc_sub("sub-123")
         with self.assertRaises(ValueError):
             user.bind_oidc_sub("sub-456")
 
     def test_anonymising_unenrols(self):
-        user = User.objects.enroll(school=self.school, cn="pupil")
+        user = User.objects.enroll(cn="pupil")
         user.bind_oidc_sub("sub-789")
         user.anonymize()
         user.refresh_from_db()
@@ -231,17 +216,16 @@ class ScreenTests(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        cls.school = School.objects.create(slug="lycee", name="Lycee")
-        cls.room = Room.objects.create(school=cls.school, name="204")
+        cls.room = Room.objects.create(name="204")
         cls.device = Device.objects.create(
-            school=cls.school, room=cls.room, mac="48:5B:39:0B:2E:C2",
+            room=cls.room, mac="48:5B:39:0B:2E:C2",
             hostname="dienst05", pxe=1,
         )
         cls.user = User.objects.enroll(
-            school=cls.school, cn="pupil", role=Role.MEMBER, display_name="Lea"
+            cn="pupil", role=Role.MEMBER, display_name="Lea"
         )
         cls.ticket = Ticket.objects.create(
-            school=cls.school, room=cls.room, device=cls.device, room_label="204",
+            room=cls.room, device=cls.device, room_label="204",
             title="Black screen", description="Nothing on boot.",
             status=Ticket.Status.OPEN, priority=Ticket.Priority.HIGH,
             visibility=Visibility.TEAM, created_by=cls.user,
@@ -292,7 +276,7 @@ class ScreenTests(TestCase):
         TicketTag.objects.create(
             ticket=self.ticket,
             tag=Tag.objects.create(
-                school=self.school, slug="hdmi", name="HDMI", color=Tag.Color.ERROR
+                slug="hdmi", name="HDMI", color=Tag.Color.ERROR
             ),
         )
         page = self.client.get(
@@ -491,18 +475,17 @@ class WriteTests(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        cls.school = School.objects.create(slug="lycee", name="Lycee")
-        cls.room = Room.objects.create(school=cls.school, name="204")
-        cls.other_room = Room.objects.create(school=cls.school, name="205")
+        cls.room = Room.objects.create(name="204")
+        cls.other_room = Room.objects.create(name="205")
         cls.device = Device.objects.create(
-            school=cls.school, room=cls.room, mac="48:5b:39:0b:2e:c2", hostname="r204-01"
+            room=cls.room, mac="48:5b:39:0b:2e:c2", hostname="r204-01"
         )
         cls.foreign_device = Device.objects.create(
-            school=cls.school, room=cls.other_room, mac="48:5b:39:0b:2e:c3", hostname="r205-01"
+            room=cls.other_room, mac="48:5b:39:0b:2e:c3", hostname="r205-01"
         )
 
         def person(cn, role):
-            return User.objects.enroll(school=cls.school, cn=cn, role=role, display_name=cn)
+            return User.objects.enroll(cn=cn, role=role, display_name=cn)
 
         cls.admin = person("admin", Role.ADMIN)
         cls.member = person("pupil", Role.MEMBER)
@@ -518,7 +501,7 @@ class WriteTests(TestCase):
 
     def open_ticket(self, **kwargs):
         fields = {
-            "school": self.school, "room": self.room, "room_label": "204",
+            "room": self.room, "room_label": "204",
             "title": "Black screen", "visibility": Visibility.TEAM,
             "created_by": self.member,
         }
@@ -539,7 +522,6 @@ class WriteTests(TestCase):
         ticket = Ticket.objects.get(title="No sound")
         self.assertRedirects(response, reverse("tickets:detail", args=[ticket.pk]))
         self.assertEqual(ticket.created_by, self.reporter)
-        self.assertEqual(ticket.school, self.school)
 
     def test_the_room_label_is_frozen_at_creation(self):
         self.client.force_login(self.member)
@@ -699,13 +681,15 @@ class WriteTests(TestCase):
         ticket.refresh_from_db()
         self.assertIsNone(ticket.device)
 
-    def test_a_room_from_another_school_is_refused(self):
-        elsewhere = School.objects.create(slug="ailleurs", name="Ailleurs")
-        foreign = Room.objects.create(school=elsewhere, name="Z999")
+    def test_a_room_out_of_service_is_refused(self):
+        """Was "a room from another school" until D-49 removed the other
+        school. The queryset is still the rule; a retired room is what it now
+        excludes."""
+        retired = Room.objects.create(name="Z999", is_active=False)
         ticket = self.open_ticket()
         self.client.force_login(self.member)
         self.post("tickets:correct", ticket, {
-            "room": foreign.pk, "priority": Ticket.Priority.NORMAL,
+            "room": retired.pk, "priority": Ticket.Priority.NORMAL,
         })
         ticket.refresh_from_db()
         self.assertEqual(ticket.room, self.room)
@@ -919,18 +903,17 @@ class ListViewTests(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        cls.school = School.objects.create(slug="lycee2", name="Lycee")
-        cls.a101 = Room.objects.create(school=cls.school, name="A101", sort_key="1-101")
-        cls.b204 = Room.objects.create(school=cls.school, name="B204", sort_key="2-204")
-        cls.admin = User.objects.enroll(school=cls.school, cn="a", role=Role.ADMIN)
-        cls.member = User.objects.enroll(school=cls.school, cn="m", role=Role.MEMBER)
-        cls.reporter = User.objects.enroll(school=cls.school, cn="r", role=Role.REPORTER)
-        cls.tag = Tag.objects.create(school=cls.school, slug="hdmi", name="HDMI")
+        cls.a101 = Room.objects.create(name="A101", sort_key="1-101")
+        cls.b204 = Room.objects.create(name="B204", sort_key="2-204")
+        cls.admin = User.objects.enroll(cn="a", role=Role.ADMIN)
+        cls.member = User.objects.enroll(cn="m", role=Role.MEMBER)
+        cls.reporter = User.objects.enroll(cn="r", role=Role.REPORTER)
+        cls.tag = Tag.objects.create(slug="hdmi", name="HDMI")
 
         def ticket(title, *, status=Ticket.Status.OPEN, priority=Ticket.Priority.NORMAL,
                    room=None, visibility=Visibility.TEAM, tags=()):
             t = Ticket.objects.create(
-                school=cls.school, room=room or cls.a101, title=title, status=status,
+                room=room or cls.a101, title=title, status=status,
                 priority=priority, visibility=visibility, created_by=cls.admin,
             )
             for tag in tags:
@@ -1022,15 +1005,16 @@ class ListViewTests(TestCase):
         response = self.client.get(reverse("tickets:list") + "?tag=hdmy")
         self.assertIsNone(response.context["selected_tag"])
 
-    def test_a_tag_of_another_school_narrows_nothing(self):
-        elsewhere = School.objects.create(slug="ailleurs", name="Ailleurs")
-        Tag.objects.create(school=elsewhere, slug="fremd", name="Fremd")
+    def test_a_slug_no_tag_carries_narrows_nothing(self):
+        """A typo, or a link shared before a tag was renamed. It used to be a
+        tag of another school (D-49 removed the notion); the failure mode it
+        guards is the same -- an empty list with no visible cause."""
         self.assertIn("open normal", self.titles(self.member, "?tag=fremd"))
 
     def test_pagination_splits_the_archive(self):
         for i in range(25):
             Ticket.objects.create(
-                school=self.school, room=self.a101, title=f"bulk {i}",
+                room=self.a101, title=f"bulk {i}",
                 visibility=Visibility.TEAM, created_by=self.admin,
             )
         # 25 bulk tickets plus the four open ones this class already has.
@@ -1043,14 +1027,13 @@ class SearchTests(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        cls.school = School.objects.create(slug="lycee3", name="Lycee")
-        cls.room = Room.objects.create(school=cls.school, name="C300")
-        cls.admin = User.objects.enroll(school=cls.school, cn="a3", role=Role.ADMIN)
-        cls.member = User.objects.enroll(school=cls.school, cn="m3", role=Role.MEMBER)
+        cls.room = Room.objects.create(name="C300")
+        cls.admin = User.objects.enroll(cn="a3", role=Role.ADMIN)
+        cls.member = User.objects.enroll(cn="m3", role=Role.MEMBER)
 
         def ticket(title, **kwargs):
             return Ticket.objects.create(
-                school=cls.school, room=cls.room, title=title,
+                room=cls.room, title=title,
                 created_by=cls.admin, **kwargs,
             )
 
@@ -1112,17 +1095,16 @@ class RetaggingTests(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        cls.school = School.objects.create(slug="lycee3", name="Lycee")
-        cls.room = Room.objects.create(school=cls.school, name="A101", sort_key="1-101")
-        cls.member = User.objects.enroll(school=cls.school, cn="m", role=Role.MEMBER)
-        cls.reporter = User.objects.enroll(school=cls.school, cn="r", role=Role.REPORTER)
-        cls.screen = Tag.objects.create(school=cls.school, slug="bildschirm", name="Bildschirm")
-        cls.hdmi = Tag.objects.create(school=cls.school, slug="hdmi", name="HDMI")
+        cls.room = Room.objects.create(name="A101", sort_key="1-101")
+        cls.member = User.objects.enroll(cn="m", role=Role.MEMBER)
+        cls.reporter = User.objects.enroll(cn="r", role=Role.REPORTER)
+        cls.screen = Tag.objects.create(slug="bildschirm", name="Bildschirm")
+        cls.hdmi = Tag.objects.create(slug="hdmi", name="HDMI")
 
     def setUp(self):
         # Opened by the reporter, tagged with what it looked like.
         self.ticket = Ticket.objects.create(
-            school=self.school, room=self.room, title="Schwarzer Bildschirm",
+            room=self.room, title="Schwarzer Bildschirm",
             visibility=Visibility.ALL, created_by=self.reporter,
         )
         TicketTag.objects.create(ticket=self.ticket, tag=self.screen)
@@ -1155,10 +1137,11 @@ class RetaggingTests(TestCase):
         self.assertEqual(self.retag(self.reporter, [self.hdmi.pk]).status_code, 404)
         self.assertEqual(self.slugs(), ["bildschirm"])
 
-    def test_a_tag_from_another_school_is_refused(self):
-        elsewhere = School.objects.create(slug="ailleurs2", name="Ailleurs")
-        foreign = Tag.objects.create(school=elsewhere, slug="fremd", name="Fremd")
-        self.retag(self.member, [foreign.pk, self.hdmi.pk])
+    def test_an_identifier_no_tag_carries_is_ignored(self):
+        """Was "a tag from another school" until D-49. What remains is the
+        posted identifier that matches nothing -- the vocabulary comes from the
+        page, and the page is not what the queryset trusts."""
+        self.retag(self.member, [9999, self.hdmi.pk])
         self.assertEqual(self.slugs(), ["hdmi"])
 
     def test_a_ticket_one_may_not_read_is_a_404_not_a_403(self):
@@ -1187,22 +1170,18 @@ class RetaggingTests(TestCase):
 class TagColourTests(TestCase):
     """`Tag.color` was filled by the demo seed and read by no template."""
 
-    @classmethod
-    def setUpTestData(cls):
-        cls.school = School.objects.create(slug="lycee4", name="Lycee")
-
     def test_a_tinted_tag_is_soft_and_never_solid(self):
         tag = Tag.objects.create(
-            school=self.school, slug="hdmi", name="HDMI", color=Tag.Color.WARNING
+            slug="hdmi", name="HDMI", color=Tag.Color.WARNING
         )
         self.assertEqual(tag.badge_class, "badge-soft badge-warning")
 
     def test_no_colour_keeps_the_outline_rather_than_a_grey_tint(self):
         """"None chosen" has to stay distinguishable from `neutral`."""
-        tag = Tag.objects.create(school=self.school, slug="plain", name="Plain")
+        tag = Tag.objects.create(slug="plain", name="Plain")
         self.assertEqual(tag.badge_class, "badge-outline")
         neutral = Tag.objects.create(
-            school=self.school, slug="grey", name="Grey", color=Tag.Color.NEUTRAL
+            slug="grey", name="Grey", color=Tag.Color.NEUTRAL
         )
         self.assertEqual(neutral.badge_class, "badge-soft badge-neutral")
 
@@ -1233,11 +1212,10 @@ class AttachmentPathTests(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        cls.school = School.objects.create(slug="lycee", name="Lycee")
-        cls.room = Room.objects.create(school=cls.school, name="204")
-        cls.boss = User.objects.enroll(school=cls.school, cn="boss", role=Role.ADMIN)
+        cls.room = Room.objects.create(name="204")
+        cls.boss = User.objects.enroll(cn="boss", role=Role.ADMIN)
         cls.ticket = Ticket.objects.create(
-            school=cls.school, room=cls.room, title="Beamer",
+            room=cls.room, title="Beamer",
             visibility=Visibility.TEAM, created_by=cls.boss,
         )
 
@@ -1310,11 +1288,10 @@ class AttachmentPathTests(TestCase):
 class CommentAdminTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.school = School.objects.create(slug="lycee", name="Lycee")
-        cls.room = Room.objects.create(school=cls.school, name="204")
-        cls.boss = User.objects.enroll(school=cls.school, cn="boss", role=Role.ADMIN)
+        cls.room = Room.objects.create(name="204")
+        cls.boss = User.objects.enroll(cn="boss", role=Role.ADMIN)
         cls.ticket = Ticket.objects.create(
-            school=cls.school, room=cls.room, title="Beamer",
+            room=cls.room, title="Beamer",
             visibility=Visibility.TEAM, created_by=cls.boss,
         )
         cls.comment = Comment.objects.create(
@@ -1345,15 +1322,14 @@ class ResolutionTests(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        cls.school = School.objects.create(slug="lycee5", name="Lycee")
-        cls.room = Room.objects.create(school=cls.school, name="A102", sort_key="1-102")
-        cls.boss = User.objects.enroll(school=cls.school, cn="chef", role=Role.ADMIN)
-        cls.member = User.objects.enroll(school=cls.school, cn="mm", role=Role.MEMBER)
-        cls.reporter = User.objects.enroll(school=cls.school, cn="rr", role=Role.REPORTER)
+        cls.room = Room.objects.create(name="A102", sort_key="1-102")
+        cls.boss = User.objects.enroll(cn="chef", role=Role.ADMIN)
+        cls.member = User.objects.enroll(cn="mm", role=Role.MEMBER)
+        cls.reporter = User.objects.enroll(cn="rr", role=Role.REPORTER)
 
     def setUp(self):
         self.ticket = Ticket.objects.create(
-            school=self.school, room=self.room, title="Kein Bild",
+            room=self.room, title="Kein Bild",
             visibility=Visibility.ALL, created_by=self.reporter,
         )
         self.guess = Comment.objects.create(
@@ -1397,7 +1373,7 @@ class ResolutionTests(TestCase):
         """The lookup is scoped to this ticket's own comments: an identifier
         from elsewhere would hang a stranger's note at the top of this page."""
         other = Ticket.objects.create(
-            school=self.school, room=self.room, title="Drucker",
+            room=self.room, title="Drucker",
             visibility=Visibility.ADMINS, created_by=self.boss,
         )
         elsewhere = Comment.objects.create(
@@ -1517,13 +1493,12 @@ class QuickCaptureTests(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        cls.school = School.objects.create(slug="lycee6", name="Lycee")
-        cls.a = Room.objects.create(school=cls.school, name="A101", sort_key="1-101")
-        cls.b = Room.objects.create(school=cls.school, name="B204", sort_key="2-204")
-        cls.c = Room.objects.create(school=cls.school, name="C305", sort_key="3-305")
-        cls.reporter = User.objects.enroll(school=cls.school, cn="lehrer", role=Role.REPORTER)
+        cls.a = Room.objects.create(name="A101", sort_key="1-101")
+        cls.b = Room.objects.create(name="B204", sort_key="2-204")
+        cls.c = Room.objects.create(name="C305", sort_key="3-305")
+        cls.reporter = User.objects.enroll(cn="lehrer", role=Role.REPORTER)
         cls.device = Device.objects.create(
-            school=cls.school, room=cls.b, mac="48:5b:39:0b:2e:c4", hostname="b204-01"
+            room=cls.b, mac="48:5b:39:0b:2e:c4", hostname="b204-01"
         )
 
     def setUp(self):
@@ -1595,12 +1570,16 @@ class QuickCaptureTests(TestCase):
 
     def test_the_grouping_does_not_widen_what_may_be_posted(self):
         """`choices` is replaced, `queryset` is not -- and the queryset is the
-        rule (see the module docstring of tickets.forms)."""
-        elsewhere = School.objects.create(slug="ailleurs3", name="Ailleurs")
-        foreign = Room.objects.create(school=elsewhere, name="Z999")
+        rule (see the module docstring of tickets.forms).
+
+        The room that may not be posted used to be another school's; since D-49
+        there is no other school, so the case that remains is a room taken out
+        of service -- excluded by the queryset, offered by no `<option>`.
+        """
+        retired = Room.objects.create(name="Z999", is_active=False)
         self.client.post(reverse("tickets:create"), {"room": self.a.pk, "title": "x"})
         response = self.client.post(
-            reverse("tickets:create"), {"room": foreign.pk, "title": "Fremd"}
+            reverse("tickets:create"), {"room": retired.pk, "title": "Fremd"}
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(Ticket.objects.filter(title="Fremd").count(), 0)

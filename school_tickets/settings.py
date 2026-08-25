@@ -133,7 +133,12 @@ STATICFILES_DIRS = [BASE_DIR / "static"] if (BASE_DIR / "static").exists() else 
 MEDIA_ROOT = Path(os.environ.get("ST_MEDIA_ROOT", BASE_DIR / "media"))
 ST_X_ACCEL_PREFIX = os.environ.get("ST_X_ACCEL_PREFIX", "")
 
-# --- Default school (D-06) ---------------------------------------------------
+# --- Which school to ask linuxmuster about (D-49) ----------------------------
+# **Remote, not local.** This application no longer has a school of its own --
+# one instance serves one establishment, so the entity was removed from the
+# schema. linuxmuster, on the other hand, is multi-school by design: `lmnapi`
+# wants to be told which one, and "default-school" is what a single-school
+# server calls its own. This is that parameter and nothing else.
 ST_DEFAULT_SCHOOL_SLUG = os.environ.get("ST_DEFAULT_SCHOOL", "default-school")
 
 # --- Instance identity (D-30) -------------------------------------------------

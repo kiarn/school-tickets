@@ -19,15 +19,14 @@ from django.urls import reverse
 from PIL import Image
 
 from accounts.authz import Role
-from accounts.models import School, User
+from accounts.models import User
 from school_tickets.checks import catalogues_are_compiled, crest_is_a_square_png
 
 
 class SiteNameTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.school = School.objects.create(slug="lycee", name="Lycee")
-        cls.person = User.objects.enroll(school=cls.school, cn="boss", role=Role.ADMIN)
+        cls.person = User.objects.enroll(cn="boss", role=Role.ADMIN)
 
     @override_settings(ST_SITE_NAME="LGB")
     def test_the_name_reaches_the_page_before_login(self):
@@ -65,8 +64,7 @@ class SiteNameTests(TestCase):
 class LogoTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.school = School.objects.create(slug="lycee", name="Lycee")
-        cls.person = User.objects.enroll(school=cls.school, cn="boss", role=Role.ADMIN)
+        cls.person = User.objects.enroll(cn="boss", role=Role.ADMIN)
 
     def setUp(self):
         self.dir = tempfile.mkdtemp()
@@ -134,8 +132,7 @@ class ManifestTests(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        cls.school = School.objects.create(slug="lycee", name="Lycee")
-        cls.person = User.objects.enroll(school=cls.school, cn="boss", role=Role.ADMIN)
+        cls.person = User.objects.enroll(cn="boss", role=Role.ADMIN)
 
     def setUp(self):
         self.dir = tempfile.mkdtemp()
@@ -399,8 +396,7 @@ class CatalogueTests(TestCase):
         """`.mo` files are build artefacts and stay out of the repository, so
         this one skips rather than fails on a fresh clone. It is still the only
         test that proves the whole chain -- extraction, translation, LocaleMiddleware."""
-        school = School.objects.create(slug="lgb", name="LGB")
-        person = User.objects.enroll(school=school, cn="lena", role=Role.MEMBER)
+        person = User.objects.enroll(cn="lena", role=Role.MEMBER)
         person.language = "de"
         person.save(update_fields=["language"])
         self.client.force_login(person)

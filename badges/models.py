@@ -16,50 +16,31 @@ class Badge(models.Model):
     slug = models.SlugField(unique=True)
     # When true: label resolved through gettext and translated via Crowdin (D-15).
     is_catalog = models.BooleanField(default=False)
-    # NULL = catalogue badge, shared by every school.
-    school = models.ForeignKey(
-        "accounts.School", on_delete=models.CASCADE, null=True, blank=True, related_name="badges"
-    )
     name = models.CharField(max_length=200, blank=True)
     description = models.TextField(blank=True)
     icon = models.CharField(max_length=100, blank=True)
     category = models.CharField(max_length=100, blank=True)
     # How many times this badge has been given, ever (R-17). It exists
     # because an award is DELETED when its holder is
-    # anonymised: without a counter, an erasure would also erase the school's
-    # own record that the badge had ever been earned. Not a leaderboard --
+    # anonymised: without a counter, an erasure would also erase the record
+    # that the badge had ever been earned. Not a leaderboard --
     # counting badges says nothing about which pupil holds them (D-10).
     award_count = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         constraints = [
-            # `is_catalog` and `school NULL` say the same thing twice -- shared
-            # by every school, and translated through Crowdin (D-15) -- so they
-            # may not disagree. The Django admin used to let them: a badge
-            # flagged catalogue *and* attached to a school, or one attached to
-            # none while not being catalogue, which then showed up in every
-            # school's catalogue untranslated. Neither was reachable through
-            # `BadgeForm`, and neither was refused by anything.
-            models.CheckConstraint(
-                condition=(
-                    models.Q(is_catalog=True, school__isnull=True)
-                    | models.Q(is_catalog=False, school__isnull=False)
-                ),
-                name="catalog_badge_has_no_school",
-            ),
             # Not conditional, and that is the point: MariaDB has no partial
             # index, and Django drops a conditional constraint there without a
             # word -- it would hold in the tests and be absent in production
-            # (D-03). The cost is that two nameless badges in one school now
-            # collide; both forms require a name, so the case is theoretical.
+            # (D-03). The cost is that two nameless badges collide; both forms
+            # require a name, so the case is theoretical.
             #
-            # Catalogue badges escape it on both backends, `school` being NULL:
-            # their names come from a fixture shipped with the code, not from
-            # anybody typing.
-            models.UniqueConstraint(
-                fields=["school", "name"], name="unique_badge_name_per_school"
-            ),
+            # It now covers catalogue badges too, where `school NULL` used to
+            # let them out (D-49). That is a tightening and not a loss: a badge
+            # invented here that answers to the same name as a shipped one
+            # would be indistinguishable on a profile page.
+            models.UniqueConstraint(fields=["name"], name="unique_badge_name"),
         ]
 
     def __str__(self):
@@ -67,11 +48,11 @@ class Badge(models.Model):
 
     @property
     def label(self) -> str:
-        """A catalogue badge is translated; a school's own badge never is.
+        """A catalogue badge is translated; a locally invented one never is.
 
         The distinction is D-15's: catalogue strings travel to Crowdin, and a
-        badge invented by one school has no business in a shared catalogue --
-        nor would anybody translate it.
+        badge invented locally has no business in a shared catalogue -- nor
+        would anybody translate it.
         """
         if self.is_catalog and self.name:
             return gettext(self.name)
@@ -128,7 +109,7 @@ def _uncount_award(sender, instance, **kwargs):
     That is the whole distinction R-17 rests on. An award withdrawn by an
     admin was a mistake, so it should never have been counted. An award that
     disappears because somebody exercised their right to erasure did happen,
-    and the school keeps the fact that it happened -- just not the name.
+    and the record that it happened survives -- just not the name.
     """
     holder = getattr(instance, "user", None)
     if holder is not None and holder.anonymized_at:

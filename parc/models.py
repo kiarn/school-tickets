@@ -39,7 +39,6 @@ class DeviceRole(models.TextChoices):
 class Room(models.Model):
     """A room is never deleted, only retired."""
 
-    school = models.ForeignKey("accounts.School", on_delete=models.CASCADE, related_name="rooms")
     name = models.CharField(max_length=100)
     building = models.CharField(max_length=100, blank=True)
     sort_key = models.CharField(max_length=100, blank=True)  # human order, not alphabetical
@@ -56,7 +55,6 @@ class Room(models.Model):
 
 
 class Device(models.Model):
-    school = models.ForeignKey("accounts.School", on_delete=models.CASCADE, related_name="devices")
     room = models.ForeignKey(Room, on_delete=models.PROTECT, related_name="devices")
     # Stable identity: survives both a hostname change AND a move to another
     # room. This is the estate's external key -- never the hostname (doc 03).
@@ -78,7 +76,7 @@ class Device(models.Model):
     class Meta:
         constraints = [
             # On the MAC, and emphatically NOT on the hostname.
-            models.UniqueConstraint(fields=["school", "mac"], name="unique_device_mac_per_school")
+            models.UniqueConstraint(fields=["mac"], name="unique_device_mac")
         ]
         ordering = ["hostname"]
 
@@ -91,7 +89,7 @@ class Device(models.Model):
 
         Real ``devices.csv`` files mix both cases in the same file -- a sample
         from a live server carried 38 upper-case and 7 lower-case addresses.
-        Without normalisation the unique constraint on (school, mac) protects
+        Without normalisation the unique constraint on `mac` protects
         nothing: the same machine re-cased creates a second row, and the MAC
         stops being the stable identity the whole design rests on (doc 03).
         """
@@ -158,7 +156,6 @@ class SyncRun(models.Model):
         FAILED = "failed", _("Failed")
         REFUSED_GUARD = "refused_guard", _("Refused by the volume guard")
 
-    school = models.ForeignKey("accounts.School", on_delete=models.CASCADE, related_name="+")
     source = models.CharField(max_length=20, choices=[("lmnapi", "lmnapi"), ("csv_upload", "CSV")])
     started_at = models.DateTimeField(auto_now_add=True)
     finished_at = models.DateTimeField(null=True, blank=True)

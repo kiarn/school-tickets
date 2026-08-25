@@ -13,7 +13,7 @@ from django.db import IntegrityError
 from django.test import TestCase, SimpleTestCase, override_settings
 from django.utils import timezone
 
-from accounts.models import AuditLog, School
+from accounts.models import AuditLog
 from parc import sources, tasks
 from parc.inventory import apply_inventory
 from parc.models import Device, DeviceStatus, Room, SyncDecision, SyncRun
@@ -99,12 +99,11 @@ class ParserTests(SimpleTestCase):
 class DeviceModelTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.school = School.objects.create(slug="lycee", name="Lycee")
-        cls.room = Room.objects.create(school=cls.school, name="204")
+        cls.room = Room.objects.create(name="204")
 
     def _device(self, mac, hostname="pc", **kwargs):
         return Device.objects.create(
-            school=self.school, room=self.room, mac=mac, hostname=hostname, **kwargs
+            room=self.room, mac=mac, hostname=hostname, **kwargs
         )
 
     def test_mac_is_lowercased_on_every_write(self):
@@ -133,12 +132,8 @@ class DeviceModelTests(TestCase):
 
 
 class InventoryTests(TestCase):
-    @classmethod
-    def setUpTestData(cls):
-        cls.school = School.objects.create(slug="lycee", name="Lycee")
-
     def import_sample(self):
-        return apply_inventory(self.school, parse_sample().rows, source="csv_upload")
+        return apply_inventory(parse_sample().rows, source="csv_upload")
 
     def rows_without(self, hostnames):
         return [r for r in parse_sample().rows if r.hostname not in hostnames]
@@ -177,7 +172,7 @@ class InventoryTests(TestCase):
             if row.hostname == "dienst05":
                 row = sources.DeviceRow(**{**row.__dict__, "room": "kissy", "hostname": "sfb11"})
             rows.append(row)
-        apply_inventory(self.school, rows, source="csv_upload")
+        apply_inventory(rows, source="csv_upload")
 
         device.refresh_from_db()
         self.assertEqual(device.pk, original_id)
@@ -198,7 +193,7 @@ class InventoryTests(TestCase):
             else row
             for row in parse_sample().rows
         ]
-        apply_inventory(self.school, rows, source="csv_upload")
+        apply_inventory(rows, source="csv_upload")
 
         decision = SyncDecision.objects.get(kind=SyncDecision.Kind.ROOM_RENAMED_SUSPECTED)
         self.assertEqual(decision.status, SyncDecision.Status.PENDING)
@@ -219,7 +214,7 @@ class InventoryTests(TestCase):
             else row
             for row in parse_sample().rows
         ]
-        apply_inventory(self.school, rows, source="csv_upload")
+        apply_inventory(rows, source="csv_upload")
         decision = SyncDecision.objects.get(kind=SyncDecision.Kind.ROOM_RENAMED_SUSPECTED)
         self.assertTrue(decision.payload["weak_evidence"])
 
@@ -237,7 +232,7 @@ class InventoryTests(TestCase):
             else row
             for row in parse_sample().rows
         ]
-        apply_inventory(self.school, rows, source="csv_upload")
+        apply_inventory(rows, source="csv_upload")
 
         self.assertEqual(SyncDecision.objects.count(), 0)
         # The origin room stays, empty -- the exact description of what happened.
@@ -248,7 +243,7 @@ class InventoryTests(TestCase):
     def test_disappearance_is_queued_never_applied(self):
         self.import_sample()
         gone = {"dienst05", "dienst07", "dienst08", "dienst09"}
-        apply_inventory(self.school, self.rows_without(gone), source="csv_upload")
+        apply_inventory(self.rows_without(gone), source="csv_upload")
 
         self.assertEqual(
             SyncDecision.objects.filter(kind=SyncDecision.Kind.DEVICE_DISAPPEARED).count(), 4
@@ -264,25 +259,25 @@ class InventoryTests(TestCase):
         """Otherwise a nightly sync buries the queue in its own repetitions."""
         self.import_sample()
         gone = {"dienst05"}
-        apply_inventory(self.school, self.rows_without(gone), source="csv_upload")
-        apply_inventory(self.school, self.rows_without(gone), source="csv_upload")
+        apply_inventory(self.rows_without(gone), source="csv_upload")
+        apply_inventory(self.rows_without(gone), source="csv_upload")
         self.assertEqual(
             SyncDecision.objects.filter(kind=SyncDecision.Kind.DEVICE_DISAPPEARED).count(), 1
         )
 
     def test_a_returning_device_needs_no_decision(self):
         self.import_sample()
-        apply_inventory(self.school, self.rows_without({"dienst05"}), source="csv_upload")
+        apply_inventory(self.rows_without({"dienst05"}), source="csv_upload")
         Device.objects.filter(hostname="dienst05").update(is_active=False)
 
-        apply_inventory(self.school, parse_sample().rows, source="csv_upload")
+        apply_inventory(parse_sample().rows, source="csv_upload")
         self.assertTrue(Device.objects.get(hostname="dienst05").is_active)
 
     @override_settings(ST_SYNC_MAX_REMOVAL_RATIO=0.20)
     def test_the_volume_guard_applies_nothing(self):
         """A truncated export, an empty body behind a 200: how an estate is lost."""
         self.import_sample()
-        run = apply_inventory(self.school, [], source="csv_upload")
+        run = apply_inventory([], source="csv_upload")
 
         self.assertEqual(run.status, SyncRun.Status.REFUSED_GUARD)
         self.assertIn("Nothing was applied", run.error)
@@ -294,7 +289,7 @@ class InventoryTests(TestCase):
     def test_a_removal_under_the_threshold_still_goes_through(self):
         self.import_sample()
         gone = {r.hostname for r in parse_sample().rows[:8]}
-        run = apply_inventory(self.school, self.rows_without(gone), source="csv_upload")
+        run = apply_inventory(self.rows_without(gone), source="csv_upload")
         self.assertEqual(run.status, SyncRun.Status.SUCCESS)
 
 
@@ -303,8 +298,7 @@ class LinboSweepTests(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        cls.school = School.objects.create(slug="lycee", name="Lycee")
-        apply_inventory(cls.school, parse_sample().rows, source="csv_upload")
+        apply_inventory(parse_sample().rows, source="csv_upload")
 
     def test_only_pxe_machines_are_swept(self):
         """31 of the sample's 45 rows are printers, routers, NAS and servers.

@@ -131,7 +131,7 @@ def ticket_list(request):
     # exist to prevent.
     tag = request.GET.get("tag") or ""
     selected_tag = (
-        Tag.objects.filter(school=request.user.school, slug=tag).first() if tag else None
+        Tag.objects.filter(slug=tag).first() if tag else None
     )
     if selected_tag:
         tickets = tickets.filter(tags=selected_tag)
@@ -162,7 +162,7 @@ def ticket_list(request):
     )
 
     page = Paginator(tickets, PAGE_SIZE).get_page(request.GET.get("page"))
-    rooms = Room.objects.filter(school=request.user.school, is_active=True).order_by(
+    rooms = Room.objects.filter(is_active=True).order_by(
         "sort_key", "name"
     )
     return render(
@@ -175,7 +175,7 @@ def ticket_list(request):
             "closed": closed,
             "search": search,
             "rooms": rooms,
-            "tags": Tag.objects.filter(school=request.user.school).order_by("name"),
+            "tags": Tag.objects.order_by("name"),
             "selected_room": rooms.filter(pk=room).first() if room else None,
             "selected_tag": selected_tag,
             "can_work": can_work_on(request.user),
@@ -225,7 +225,7 @@ def ticket_detail(request, pk):
             "can_widen": can_widen(request.user),
             "assignable": _team(request.user) if _is_admin(request.user) else None,
             "taggable": (
-                Tag.objects.filter(school=ticket.school).order_by("name")
+                Tag.objects.order_by("name")
                 if can_work_on(request.user)
                 else None
             ),
@@ -271,7 +271,7 @@ def room_devices(request):
     room = request.GET.get("room")
     if room:
         devices = Device.objects.filter(
-            school=request.user.school, is_active=True, room_id=room
+            is_active=True, room_id=room
         )
     return render(request, "tickets/_device_options.html", {"devices": devices})
 
@@ -381,7 +381,6 @@ def _is_admin(user):
 def _team(user):
     """The people an admin may put on a ticket: those who repair."""
     return User.objects.filter(
-        school=user.school,
         is_active=True,
         role__in=[role.value for role in WORKING_ROLES],
     ).order_by("display_name", "cn")
@@ -433,9 +432,7 @@ def ticket_tags(request, pk):
     if not can_work_on(request.user):
         raise Http404
 
-    # Scoped to the ticket's own school, not the poster's: the identifiers come
-    # from the page, and a tag belongs to one school (D-06).
-    wanted = set(Tag.objects.filter(school=ticket.school, pk__in=request.POST.getlist("tags")))
+    wanted = set(Tag.objects.filter(pk__in=request.POST.getlist("tags")))
     current = set(ticket.tags.all())
     if wanted != current:
         with transaction.atomic():

@@ -34,21 +34,21 @@ def _trace(actor, device, changes: dict) -> None:
     )
 
 
-def apply_inventory(school, rows, *, source, triggered_by=None) -> SyncRun:
+def apply_inventory(rows, *, source, triggered_by=None) -> SyncRun:
     """Confront the reflection with a full snapshot and write the differences.
 
     ``rows`` is a list of :class:`parc.sources.DeviceRow`; where it came from
     is none of this function's business (doc 03, "les deux sources").
     """
-    run = SyncRun.objects.create(school=school, source=source, triggered_by=triggered_by)
+    run = SyncRun.objects.create(source=source, triggered_by=triggered_by)
 
     incoming = {row.mac: row for row in rows}
     incoming_rooms: dict[str, set[str]] = {}
     for row in rows:
         incoming_rooms.setdefault(row.room, set()).add(row.mac)
 
-    previous = {d.mac: d for d in Device.objects.filter(school=school, is_active=True)}
-    known_room_names = set(Room.objects.filter(school=school).values_list("name", flat=True))
+    previous = {d.mac: d for d in Device.objects.filter(is_active=True)}
+    known_room_names = set(Room.objects.values_list("name", flat=True))
 
     vanished_macs = set(previous) - set(incoming)
 
@@ -72,15 +72,15 @@ def apply_inventory(school, rows, *, source, triggered_by=None) -> SyncRun:
     counters = {"rooms_created": 0, "devices_created": 0, "moved": 0, "renamed": 0}
 
     with transaction.atomic():
-        rooms = _ensure_rooms(school, incoming_rooms, source, counters)
-        _apply_devices(school, incoming, rooms, source, triggered_by, counters)
+        rooms = _ensure_rooms(incoming_rooms, source, counters)
+        _apply_devices(incoming, rooms, source, triggered_by, counters)
         decisions = _queue_decisions(
             run, incoming, incoming_rooms, previous, known_room_names, vanished_macs
         )
         # The one notification with no ticket behind it. In the transaction
         # like every other (doc 09 §5), and only to admins: they are the only
         # people who can act on the queue.
-        events.sync_decisions_pending(school, count=decisions)
+        events.sync_decisions_pending(count=decisions)
 
         run.status = SyncRun.Status.SUCCESS
         run.rooms_seen = len(incoming_rooms)
@@ -92,7 +92,7 @@ def apply_inventory(school, rows, *, source, triggered_by=None) -> SyncRun:
     return run
 
 
-def _ensure_rooms(school, incoming_rooms, source, counters) -> dict:
+def _ensure_rooms(incoming_rooms, source, counters) -> dict:
     """Create what is new, revive what came back. Never touch what exists.
 
     A retired room whose name reappears is reactivated rather than duplicated:
@@ -100,9 +100,9 @@ def _ensure_rooms(school, incoming_rooms, source, counters) -> dict:
     """
     rooms = {}
     for name in incoming_rooms:
-        room = Room.objects.filter(school=school, name=name).first()
+        room = Room.objects.filter(name=name).first()
         if room is None:
-            room = Room.objects.create(school=school, name=name, source=source)
+            room = Room.objects.create(name=name, source=source)
             counters["rooms_created"] += 1
         elif not room.is_active:
             room.is_active = True
@@ -113,7 +113,7 @@ def _ensure_rooms(school, incoming_rooms, source, counters) -> dict:
     return rooms
 
 
-def _apply_devices(school, incoming, rooms, source, actor, counters) -> None:
+def _apply_devices(incoming, rooms, source, actor, counters) -> None:
     """Creations, moves and hostname changes -- all of them silent.
 
     A decision queue that asked to confirm every moved workstation would hold
@@ -121,7 +121,7 @@ def _apply_devices(school, incoming, rooms, source, actor, counters) -> None:
     read just before the one entry that commits a reference set (doc 03).
     """
     now = timezone.now()
-    existing = {d.mac: d for d in Device.objects.filter(school=school)}
+    existing = {d.mac: d for d in Device.objects.all()}
 
     for mac, row in incoming.items():
         room = rooms[row.room]
@@ -129,7 +129,6 @@ def _apply_devices(school, incoming, rooms, source, actor, counters) -> None:
 
         if device is None:
             Device.objects.create(
-                school=school,
                 room=room,
                 mac=mac,
                 hostname=row.hostname,
@@ -284,7 +283,6 @@ def _queue(run: SyncRun, kind: str, *, key: str, payload: dict) -> int:
     if SyncDecision.objects.filter(
         kind=kind,
         status=SyncDecision.Status.PENDING,
-        sync_run__school=run.school,
         payload__key=key,
     ).exists():
         return 0

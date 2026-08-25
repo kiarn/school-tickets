@@ -65,7 +65,7 @@ nothing and provisions nobody, it only checks that an already-enrolled person
 is who they say they are.
 
 ```sh
-.venv/bin/python manage.py test              # 295 tests, visibility among them
+.venv/bin/python manage.py test              # 290 tests, visibility among them
 .venv/bin/python manage.py run_worker --once # one pass of every due job
 .venv/bin/python manage.py vapid_keys        # Web Push keys, once per install
 ```
@@ -245,14 +245,14 @@ be written honestly before somebody has read a real response from either system
   are Q-08 -- sophomorix moves leavers rather than deleting them, so "this `cn`
   exists" and "this person is still here" are not the same question.
 - **A starter set of tags and badges.** A fresh install has no vocabulary at
-  all: the tag dialog opens on "No tag exists yet for this school", and the
+  all: the tag dialog opens on "No tag exists yet", and the
   badge catalogue is empty -- the five catalogue badges only ever existed in
   the demo seed, which is not part of this repository. Both are configurable by
   design, so what is missing is not a mechanism but a **default proposal**: a
   handful of tags for the faults that recur, and a catalogue an administrator
   prunes, renames or ignores. The split of D-15 decides how each half is
   shipped -- catalogue badges are `msgid` that travel with the code and are
-  translated, while a tag is a school's own vocabulary and is never translated,
+  translated, while a tag is this instance's own vocabulary and is never translated,
   so the two cannot be seeded by the same mechanism.
 - **Crowdin.** The catalogues are written and complete, but nothing is wired
   to the translation platform the other linuxmuster projects use (D-15), and

@@ -16,7 +16,7 @@ class AssigneeInline(admin.TabularInline):
 @admin.register(Ticket)
 class TicketAdmin(admin.ModelAdmin):
     list_display = ("id", "room_label", "title", "status", "visibility", "created_at")
-    list_filter = ("status", "visibility", "priority", "school")
+    list_filter = ("status", "visibility", "priority")
     search_fields = ("title", "description", "room_label")
     inlines = [AssigneeInline]
     # Read-only rather than editable: the default widget for this key lists
@@ -35,8 +35,8 @@ class TagAdmin(admin.ModelAdmin):
     room -- not a row edited by a superuser here. That is ``t/<pk>/tags/``.
     """
 
-    list_display = ("name", "slug", "school", "color", "ticket_count")
-    list_filter = ("school", "color")
+    list_display = ("name", "slug", "color", "ticket_count")
+    list_filter = ("color",)
     search_fields = ("name", "slug")
     ordering = ("name",)
     # The slug ends up in an URL (`?tag=hdmi`) and nothing generates it. Typed

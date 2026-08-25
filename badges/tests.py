@@ -6,7 +6,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from accounts.authz import Role, Visibility
-from accounts.models import AuditLog, School, User
+from accounts.models import AuditLog, User
 from parc.models import Room
 from tickets.models import Ticket
 
@@ -16,22 +16,17 @@ from .models import Badge, BadgeAward
 class CatalogTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.school = School.objects.create(slug="lycee", name="Lycee")
-        cls.other_school = School.objects.create(slug="other", name="Other")
         cls.member = User.objects.enroll(
-            school=cls.school, cn="pupil", role=Role.MEMBER, display_name="Lea"
+            cn="pupil", role=Role.MEMBER, display_name="Lea"
         )
         cls.admin = User.objects.enroll(
-            school=cls.school, cn="admin", role=Role.ADMIN, display_name="Admin"
+            cn="admin", role=Role.ADMIN, display_name="Admin"
         )
         cls.local = Badge.objects.create(
-            slug="lycee-hdmi", school=cls.school, name="First HDMI fault"
+            slug="lycee-hdmi", name="First HDMI fault"
         )
         cls.shared = Badge.objects.create(
-            slug="first-linbo", school=None, is_catalog=True, name="First LINBO sync"
-        )
-        cls.foreign = Badge.objects.create(
-            slug="other-thing", school=cls.other_school, name="Somebody else's badge"
+            slug="first-linbo", is_catalog=True, name="First LINBO sync"
         )
 
     def test_the_catalogue_shows_what_exists_and_never_who_holds_it(self):
@@ -44,11 +39,6 @@ class CatalogTests(TestCase):
         self.assertContains(response, "First HDMI fault")
         self.assertContains(response, "First LINBO sync")
         self.assertNotContains(response, "Lea")
-
-    def test_another_school_s_badges_stay_there(self):
-        self.client.force_login(self.member)
-        response = self.client.get(reverse("badges:catalog"))
-        self.assertNotContains(response, "Somebody else&#x27;s badge")
 
     def test_only_an_admin_is_offered_the_management_controls(self):
         self.client.force_login(self.member)
@@ -66,42 +56,42 @@ class CatalogTests(TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertFalse(Badge.objects.filter(name="Mine").exists())
 
-    def test_a_created_badge_belongs_to_the_school_and_is_never_shared(self):
+    def test_a_created_badge_is_never_shared(self):
         """A shared badge means a string in the Crowdin catalogues (D-15): not
-        something one school decides on an afternoon."""
+        something decided here on an afternoon."""
         self.client.force_login(self.admin)
         self.client.post(reverse("badges:create"), {"name": "First full install"})
         badge = Badge.objects.get(name="First full install")
-        self.assertEqual(badge.school, self.school)
         self.assertFalse(badge.is_catalog)
-        self.assertTrue(badge.slug.startswith("lycee-"))
+        self.assertEqual(badge.slug, "first-full-install")
 
-    def test_two_schools_may_invent_the_same_badge(self):
-        """`slug` is unique across every school, catalogue included."""
+    def test_a_name_the_catalogue_already_uses_is_refused(self):
+        """Until D-49 the two could coexist, one attached to a school and one
+        not. They cannot now, and that is the intended tightening: two badges
+        of the same name are indistinguishable on a profile page."""
         self.client.force_login(self.admin)
-        self.client.post(reverse("badges:create"), {"name": "Somebody else's badge"})
-        self.assertEqual(Badge.objects.filter(name="Somebody else's badge").count(), 2)
+        self.client.post(reverse("badges:create"), {"name": "First LINBO sync"})
+        self.assertEqual(Badge.objects.filter(name="First LINBO sync").count(), 1)
 
 
 class AwardTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.school = School.objects.create(slug="lycee", name="Lycee")
-        cls.room = Room.objects.create(school=cls.school, name="204")
+        cls.room = Room.objects.create(name="204")
         cls.member = User.objects.enroll(
-            school=cls.school, cn="pupil", role=Role.MEMBER, display_name="Lea"
+            cn="pupil", role=Role.MEMBER, display_name="Lea"
         )
         cls.reporter = User.objects.enroll(
-            school=cls.school, cn="teacher", role=Role.REPORTER, display_name="Sam"
+            cn="teacher", role=Role.REPORTER, display_name="Sam"
         )
         cls.admin = User.objects.enroll(
-            school=cls.school, cn="admin", role=Role.ADMIN, display_name="Admin"
+            cn="admin", role=Role.ADMIN, display_name="Admin"
         )
         cls.badge = Badge.objects.create(
-            slug="lycee-hdmi", school=cls.school, name="First HDMI fault"
+            slug="lycee-hdmi", name="First HDMI fault"
         )
         cls.ticket = Ticket.objects.create(
-            school=cls.school, room=cls.room, room_label="204", title="Black screen",
+            room=cls.room, room_label="204", title="Black screen",
             visibility=Visibility.TEAM, created_by=cls.member,
         )
 
@@ -158,17 +148,16 @@ class TallyTests(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        cls.school = School.objects.create(slug="lycee", name="Lycee")
         cls.member = User.objects.enroll(
-            school=cls.school, cn="pupil", role=Role.MEMBER, display_name="Lea"
+            cn="pupil", role=Role.MEMBER, display_name="Lea"
         )
         cls.other = User.objects.enroll(
-            school=cls.school, cn="pupil2", role=Role.MEMBER, display_name="Nils"
+            cn="pupil2", role=Role.MEMBER, display_name="Nils"
         )
         cls.admin = User.objects.enroll(
-            school=cls.school, cn="admin", role=Role.ADMIN
+            cn="admin", role=Role.ADMIN
         )
-        cls.badge = Badge.objects.create(slug="lycee-hdmi", school=cls.school, name="HDMI")
+        cls.badge = Badge.objects.create(slug="lycee-hdmi", name="HDMI")
 
     def count(self):
         self.badge.refresh_from_db()
@@ -214,13 +203,12 @@ class BadgeAdminTests(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        cls.school = School.objects.create(slug="default-school", name="Lycee")
-        cls.boss = User.objects.enroll(school=cls.school, cn="boss", role=Role.ADMIN)
+        cls.boss = User.objects.enroll(cn="boss", role=Role.ADMIN)
         cls.own = Badge.objects.create(
-            slug="default-school-hdmi", school=cls.school, name="HDMI"
+            slug="default-school-hdmi", name="HDMI"
         )
         cls.catalog = Badge.objects.create(
-            slug="first-linbo", school=None, is_catalog=True, name="First LINBO sync"
+            slug="first-linbo", is_catalog=True, name="First LINBO sync"
         )
 
     def setUp(self):
@@ -233,49 +221,39 @@ class BadgeAdminTests(TestCase):
             ["name", "description", "icon", "category"],
         )
 
-    def test_a_badge_made_here_is_the_school_s_own_and_never_shared(self):
+    def test_a_badge_made_here_is_never_shared(self):
         self.client.post(
             reverse("admin:badges_badge_add"),
             {"name": "Werkstatt-Helfer", "description": "", "icon": "", "category": ""},
         )
         badge = Badge.objects.get(name="Werkstatt-Helfer")
-        self.assertEqual(badge.school, self.school)
         self.assertFalse(badge.is_catalog)
-        # The school goes into the slug: two schools inventing the same name
-        # must not collide, `Badge.slug` being unique everywhere.
-        self.assertTrue(badge.slug.startswith("default-school-"))
+        self.assertEqual(badge.slug, "werkstatt-helfer")
 
     def test_a_catalogue_badge_is_read_only_except_its_tally(self):
-        readonly = self.client.get(
+        adminform = self.client.get(
             reverse("admin:badges_badge_change", args=[self.catalog.pk])
-        ).context["adminform"].model_admin.get_readonly_fields(None, self.catalog)
+        ).context["adminform"]
+        readonly = adminform.model_admin.get_readonly_fields(None, self.catalog)
         # Its name is the msgid the .po files are keyed on: editing it here
         # would silently orphan every translation of it.
-        for field in ("name", "description", "school", "is_catalog", "slug"):
+        for field in ("name", "description", "is_catalog", "slug"):
             self.assertIn(field, readonly)
         self.assertNotIn("award_count", readonly)
+        # `school` is not among them and is not on the page either: the column
+        # itself is gone since D-49.
+        self.assertNotIn("school", adminform.form.fields)
 
-    def test_a_school_badge_keeps_its_text_editable(self):
-        readonly = self.client.get(
+    def test_a_locally_made_badge_keeps_its_text_editable(self):
+        adminform = self.client.get(
             reverse("admin:badges_badge_change", args=[self.own.pk])
-        ).context["adminform"].model_admin.get_readonly_fields(None, self.own)
-        self.assertNotIn("name", readonly)
-        self.assertIn("school", readonly)
+        ).context["adminform"]
+        self.assertNotIn("name", adminform.model_admin.get_readonly_fields(None, self.own))
+        self.assertNotIn("school", adminform.form.fields)
 
-    def test_the_database_refuses_a_catalogue_badge_attached_to_a_school(self):
+    def test_two_badges_may_not_share_a_name(self):
         with self.assertRaises(IntegrityError):
-            Badge.objects.create(
-                slug="hybrid", is_catalog=True, school=self.school, name="Hybrid"
-            )
-
-    def test_the_database_refuses_a_school_badge_attached_to_none(self):
-        """It would surface in every school's catalogue, untranslated."""
-        with self.assertRaises(IntegrityError):
-            Badge.objects.create(slug="orphan", is_catalog=False, school=None, name="Orphan")
-
-    def test_two_badges_of_one_school_may_not_share_a_name(self):
-        with self.assertRaises(IntegrityError):
-            Badge.objects.create(slug="hdmi-again", school=self.school, name="HDMI")
+            Badge.objects.create(slug="hdmi-again", name="HDMI")
 
 
 class BadgeAwardAdminTests(TestCase):
@@ -283,11 +261,10 @@ class BadgeAwardAdminTests(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        cls.school = School.objects.create(slug="default-school", name="Lycee")
-        cls.boss = User.objects.enroll(school=cls.school, cn="boss", role=Role.ADMIN)
-        cls.pupil = User.objects.enroll(school=cls.school, cn="pupil", role=Role.MEMBER)
+        cls.boss = User.objects.enroll(cn="boss", role=Role.ADMIN)
+        cls.pupil = User.objects.enroll(cn="pupil", role=Role.MEMBER)
         cls.badge = Badge.objects.create(
-            slug="default-school-hdmi", school=cls.school, name="HDMI"
+            slug="default-school-hdmi", name="HDMI"
         )
         cls.given = BadgeAward.objects.create(
             badge=cls.badge, user=cls.pupil, awarded_by=cls.boss
@@ -324,7 +301,7 @@ class BadgeAwardAdminTests(TestCase):
 
     def test_the_bulk_action_accounts_for_every_row_it_erases(self):
         """It goes through a collector that never calls `delete_model`."""
-        second = User.objects.enroll(school=self.school, cn="other", role=Role.MEMBER)
+        second = User.objects.enroll(cn="other", role=Role.MEMBER)
         BadgeAward.objects.create(badge=self.badge, user=second, awarded_by=self.boss)
         self.client.post(
             reverse("admin:badges_badgeaward_changelist"),

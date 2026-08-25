@@ -15,12 +15,11 @@ the first person to log in would be a reporter with nobody able to promote
 them.
 """
 
-from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from accounts.authz import Role
-from accounts.models import AuditLog, School, User
+from accounts.models import AuditLog, User
 
 
 class Command(BaseCommand):
@@ -31,7 +30,6 @@ class Command(BaseCommand):
         parser.add_argument("--role", default=Role.REPORTER, choices=[r.value for r in Role])
         parser.add_argument("--name", default="", help="display name")
         parser.add_argument("--email", default="")
-        parser.add_argument("--school", default=None, help="school slug")
         parser.add_argument(
             "--password",
             default=None,
@@ -40,18 +38,10 @@ class Command(BaseCommand):
 
     @transaction.atomic
     def handle(self, *args, **opts):
-        slug = opts["school"] or settings.ST_DEFAULT_SCHOOL_SLUG
-        school, created = School.objects.get_or_create(
-            slug=slug, defaults={"name": slug.replace("-", " ").title()}
-        )
-        if created:
-            self.stdout.write(f"school created: {school.slug}")
-
-        if User.objects.filter(school=school, cn=opts["cn"], anonymized_at__isnull=True).exists():
-            raise CommandError(f"{opts['cn']} is already enrolled in {school.slug}")
+        if User.objects.filter(cn=opts["cn"], anonymized_at__isnull=True).exists():
+            raise CommandError(f"{opts['cn']} is already enrolled")
 
         user = User.objects.enroll(
-            school=school,
             cn=opts["cn"],
             role=Role(opts["role"]),
             display_name=opts["name"],

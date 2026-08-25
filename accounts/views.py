@@ -24,10 +24,10 @@ from .models import User
 
 
 def _may_read(viewer, target) -> bool:
-    """Yourself, or anybody in your school if you administer it."""
+    """Yourself, or anybody at all if you administer the instance."""
     if viewer.pk == target.pk:
         return True
-    return Role(viewer.role) in ADMIN_ROLES and viewer.school_id == target.school_id
+    return Role(viewer.role) in ADMIN_ROLES
 
 
 def _profile_context(person, *, editable, form=None):

@@ -4,12 +4,7 @@ from django.contrib import admin, messages
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
-from .models import AuditLog, School, User
-
-
-@admin.register(School)
-class SchoolAdmin(admin.ModelAdmin):
-    list_display = ("slug", "name", "created_at")
+from .models import AuditLog, User
 
 
 class EnrolmentForm(forms.ModelForm):
@@ -44,15 +39,13 @@ class EnrolmentForm(forms.ModelForm):
 
     def clean_cn(self):
         cn = self.cleaned_data["cn"].strip()
-        school = School.objects.default()
-        if school is None:
-            raise forms.ValidationError(
-                _("No school exists yet: run `manage.py enroll` first.")
-            )
-        # ``unique_cn_per_school_while_named`` says the same thing, but it is
-        # scoped to a school this form does not carry, so Django skips it and
-        # the duplicate arrives at the database as a 500.
-        if User.objects.filter(school=school, cn=cn, anonymized_at__isnull=True).exists():
+        # ``unique_cn`` says the same thing and Django now checks it by itself
+        # (the constraint stopped being scoped to a school in D-49). This stays
+        # for the sentence: a constraint violation surfaces as "User with this
+        # Cn already exists", where the person typing wants to read the login
+        # they just typed. ``anonymized_at`` is in the filter for the reader,
+        # not for the query -- a tombstone has no cn left to collide with.
+        if User.objects.filter(cn=cn, anonymized_at__isnull=True).exists():
             raise forms.ValidationError(_("%(cn)s is already enrolled.") % {"cn": cn})
         return cn
 
@@ -72,8 +65,8 @@ class UserAdmin(admin.ModelAdmin):
     still answers "who is this", without offering to answer it twice.
     """
 
-    list_display = ("cn", "display_name", "role", "school", "is_active", "anonymized_at")
-    list_filter = ("role", "school", "is_active")
+    list_display = ("cn", "display_name", "role", "is_active", "anonymized_at")
+    list_filter = ("role", "is_active")
     search_fields = ("cn", "display_name", "email")
     ordering = ("cn",)
 
@@ -81,7 +74,7 @@ class UserAdmin(admin.ModelAdmin):
     add_fieldsets = ((None, {"fields": ("cn", "role")}),)
 
     #: Written by the directory on login (D-22).
-    _from_directory = ("school", "display_name", "email", "avatar_url", "oidc_sub")
+    _from_directory = ("display_name", "email", "avatar_url", "oidc_sub")
     #: Written by the person, on their profile (D-24).
     _from_the_person = ("language", "theme")
     #: Written by the application.
@@ -124,7 +117,6 @@ class UserAdmin(admin.ModelAdmin):
         if not change:
             # What ``UserManager.enroll()`` does, D-22: a row that exists
             # before its first login, with no password of its own.
-            obj.school = School.objects.default()
             obj.enrolled_by = request.user
             obj.enrolled_at = timezone.now()
             obj.set_unusable_password()
