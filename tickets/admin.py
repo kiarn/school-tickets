@@ -15,15 +15,34 @@ class AssigneeInline(admin.TabularInline):
 
 @admin.register(Ticket)
 class TicketAdmin(admin.ModelAdmin):
-    list_display = ("id", "room_label", "title", "status", "visibility", "created_at")
+    """The title, and after that only reading (D-52).
+
+    Everything else a form could offer already has a screen in the application,
+    and going through this one instead **skips half of what that screen does**:
+    setting `status` to "resolved" here leaves `resolved_by` and `resolved_at`
+    empty and notifies nobody, reopening does not count the reopening. A ticket
+    resolved by nobody is not a correction, it is a lie the list then repeats.
+
+    `title` is the exception because it is the one field with no route in the
+    application: D-42 kept it out of the correction form on purpose -- it is
+    the line the list is scanned by and the one people bookmark. Somewhere it
+    still has to be fixable, and behind a superuser is the right somewhere.
+
+    Deletion stays too: it exists nowhere else, and an erasure sometimes has
+    to be complete (doc 06).
+    """
+
+    list_display = ("id", "room_label", "title", "status", "priority", "visibility", "created_at")
     list_filter = ("status", "visibility", "priority")
     search_fields = ("title", "description", "room_label")
     inlines = [AssigneeInline]
-    # Read-only rather than editable: the default widget for this key lists
-    # every comment of every ticket, so a superuser could hang a note from
-    # another thread at the top of this one -- something the application's own
-    # route cannot do. It is set where the repair is documented (D-29).
-    readonly_fields = ("resolution_comment",)
+    readonly_fields = tuple(
+        f.name for f in Ticket._meta.fields if f.name not in ("id", "title")
+    ) + ("tags",)
+
+    def has_add_permission(self, request):
+        """A ticket is opened by whoever saw the fault, in the application."""
+        return False
 
 
 @admin.register(Tag)

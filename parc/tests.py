@@ -11,12 +11,21 @@ from pathlib import Path
 
 from django.db import IntegrityError
 from django.test import TestCase, SimpleTestCase, override_settings
+from django.urls import reverse
 from django.utils import timezone
 
-from accounts.models import AuditLog
+from accounts.authz import Role
+from accounts.models import AuditLog, User
 from parc import sources, tasks
 from parc.inventory import apply_inventory
-from parc.models import Device, DeviceStatus, Room, SyncDecision, SyncRun
+from parc.models import (
+    Device,
+    DeviceStatus,
+    Room,
+    SyncDecision,
+    SyncRun,
+    WorkerHeartbeat,
+)
 
 SAMPLE = Path(__file__).parent / "testdata" / "devices-sample.csv"
 
@@ -129,6 +138,109 @@ class DeviceModelTests(TestCase):
         # NULL means "the source did not say", which is not 0 -- but it is not
         # a reason to expect a status either.
         self.assertFalse(self._device("aa:bb:cc:00:00:03").expects_linbo)
+
+
+class ParcAdminTests(TestCase):
+    """What `/admin/` may be asked about the estate (D-51).
+
+    The estate is written by the synchronisation. A form that offers to edit
+    what the next pass rewrites is a form that lies about who decides.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.boss = User.objects.enroll(cn="boss", role=Role.ADMIN)
+        cls.room = Room.objects.create(name="204", building="A")
+        cls.device = Device.objects.create(
+            room=cls.room, mac="48:5b:39:0b:2e:c2", hostname="r204-01"
+        )
+
+    def setUp(self):
+        self.client.force_login(self.boss)
+
+    def test_a_device_is_read_and_never_edited(self):
+        """Every field a form could offer is rewritten on the next pass, and
+        the one that is not -- the MAC -- is the identity itself."""
+        self.assertEqual(
+            self.client.get(reverse("admin:parc_device_add")).status_code, 403
+        )
+        page = self.client.get(reverse("admin:parc_device_change", args=[self.device.pk]))
+        self.assertEqual(page.context["adminform"].form.fields, {})
+
+    def test_a_room_keeps_the_two_fields_no_source_carries(self):
+        """`building` and `sort_key` come from nowhere else: no DeviceRow has
+        them and `_ensure_rooms` never writes them."""
+        offered = self.client.get(
+            reverse("admin:parc_room_change", args=[self.room.pk])
+        ).context["adminform"].form.fields
+        self.assertEqual(sorted(offered), ["building", "sort_key"])
+
+    def test_a_room_is_never_renamed_here(self):
+        """`_ensure_rooms` matches by name: renamed here, the room comes back
+        as a second one at the next pass and the tickets stay behind in the
+        first."""
+        self.assertNotIn(
+            "name",
+            self.client.get(
+                reverse("admin:parc_room_change", args=[self.room.pk])
+            ).context["adminform"].form.fields,
+        )
+        self.assertEqual(self.client.get(reverse("admin:parc_room_add")).status_code, 403)
+
+
+    def test_a_decision_is_answered_not_rewritten(self):
+        """`kind`, `payload` and `sync_run` are the run's account of what it
+        saw; offering them for editing offered to rewrite the question (D-52)."""
+        run = SyncRun.objects.create(source="csv_upload")
+        decision = SyncDecision.objects.create(
+            sync_run=run, kind=SyncDecision.Kind.ROOM_DISAPPEARED, payload={"key": "204"}
+        )
+        offered = self.client.get(
+            reverse("admin:parc_syncdecision_change", args=[decision.pk])
+        ).context["adminform"].form.fields
+        self.assertEqual(list(offered), ["status"])
+
+    def test_deciding_stamps_who_and_when(self):
+        """A queue that records a decision without its author records half of
+        one -- and nobody types their own name honestly at the third one."""
+        run = SyncRun.objects.create(source="csv_upload")
+        decision = SyncDecision.objects.create(
+            sync_run=run, kind=SyncDecision.Kind.DEVICE_DISAPPEARED, payload={"key": "aa"}
+        )
+        self.client.post(
+            reverse("admin:parc_syncdecision_change", args=[decision.pk]),
+            {"status": SyncDecision.Status.DISMISSED},
+        )
+        decision.refresh_from_db()
+        self.assertEqual(decision.status, SyncDecision.Status.DISMISSED)
+        self.assertEqual(decision.decided_by, self.boss)
+        self.assertIsNotNone(decision.decided_at)
+
+    def test_applied_is_not_offered_while_nothing_applies(self):
+        """Q-10. **Delete this test with the guard it protects**, the day the
+        queue gets an executor -- and not before: choosing "applied" today
+        retires no room and takes no machine out of service."""
+        run = SyncRun.objects.create(source="csv_upload")
+        decision = SyncDecision.objects.create(
+            sync_run=run, kind=SyncDecision.Kind.ROOM_DISAPPEARED, payload={"key": "204"}
+        )
+        offered = self.client.get(
+            reverse("admin:parc_syncdecision_change", args=[decision.pk])
+        ).context["adminform"].form.fields["status"].choices
+        self.assertNotIn(
+            SyncDecision.Status.APPLIED, [value for value, _label in offered]
+        )
+        self.assertIn(SyncDecision.Status.DISMISSED, [value for value, _label in offered])
+
+    def test_the_worker_has_a_window(self):
+        """The one process nobody watches had no screen, while three tables it
+        writes had one (D-52)."""
+        WorkerHeartbeat.objects.create(at=timezone.now(), jobs_ran={"notify": 1})
+        page = self.client.get(reverse("admin:parc_workerheartbeat_changelist"))
+        self.assertEqual(page.status_code, 200)
+        self.assertEqual(
+            self.client.get(reverse("admin:parc_workerheartbeat_add")).status_code, 403
+        )
 
 
 class InventoryTests(TestCase):

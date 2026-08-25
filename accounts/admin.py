@@ -1,10 +1,23 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 from django import forms
 from django.contrib import admin, messages
+from django.contrib.auth.models import Group
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 from .models import AuditLog, User
+
+# Django registers `Group` by itself, and here it is furniture (D-50). The
+# whole permission machinery is short-circuited: `role == admin` sets
+# `is_superuser` (D-27), `is_staff` returns `is_superuser`, and a superuser
+# passes every permission check without Django ever reading a group. So a group
+# created on that screen can grant nothing to anybody -- while looking exactly
+# like the place where access is arranged. `groups` and `user_permissions` were
+# already kept off the account form for the same reason.
+#
+# The model stays: `PermissionsMixin` declares the relation, and removing it
+# would be a migration for no gain. Only the screen goes.
+admin.site.unregister(Group)
 
 
 class EnrolmentForm(forms.ModelForm):
@@ -162,6 +175,11 @@ class AuditLogAdmin(admin.ModelAdmin):
     readonly_fields = tuple(f.name for f in AuditLog._meta.fields)
 
     def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        """Every field is read-only, so the change page offered a Save button
+        that saved nothing (D-52). The list and the detail stay readable."""
         return False
 
     def has_delete_permission(self, request, obj=None):

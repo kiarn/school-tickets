@@ -5,7 +5,7 @@ from django.contrib import admin as django_admin
 from django.db import IntegrityError
 from django.core.cache import cache
 from django.test import TestCase, override_settings
-from django.urls import reverse
+from django.urls import NoReverseMatch, reverse
 
 from accounts import backends
 from accounts.authz import Role, Visibility
@@ -316,6 +316,48 @@ class AdminRoleTests(TestCase):
         request = RequestFactory().get("/admin/")
         request.user = self.person("pupil", Role.MEMBER)
         self.assertFalse(django_admin.site.has_permission(request))
+
+
+class AdminSurfaceTests(TestCase):
+    """What `/admin/` offers at all (D-50).
+
+    The screens that answer nothing are the ones that cost the most: somebody
+    uses them, believes something happened, and nothing did.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.boss = User.objects.enroll(cn="boss", role=Role.ADMIN)
+
+    def setUp(self):
+        self.client.force_login(self.boss)
+
+    def test_groups_are_not_offered(self):
+        """The permission machinery is short-circuited: `role == admin` sets
+        `is_superuser` (D-27) and a superuser passes every check without Django
+        reading a group. A group here could grant nothing to anybody."""
+        with self.assertRaises(NoReverseMatch):
+            reverse("admin:auth_group_changelist")
+
+    def test_mutes_are_not_offered(self):
+        """A mute belongs to the person, on their profile (D-24)."""
+        with self.assertRaises(NoReverseMatch):
+            reverse("admin:notifications_mute_changelist")
+
+    def test_what_the_worker_writes_is_read_and_not_edited(self):
+        """Machine output: a LINBO status and the trace of a sync pass. Both
+        stay visible -- `SyncRun.error` carries the volume guard's refusal --
+        and neither takes an entry."""
+        for url in ("admin:parc_devicestatus_add", "admin:parc_syncrun_add",
+                    "admin:notifications_notification_add"):
+            with self.subTest(url=url):
+                self.assertEqual(self.client.get(reverse(url)).status_code, 403)
+
+    def test_the_audit_log_takes_no_entry_and_no_deletion(self):
+        """A duty to account for actions is not a table somebody keeps."""
+        self.assertEqual(
+            self.client.get(reverse("admin:accounts_auditlog_add")).status_code, 403
+        )
 
 
 class AdminEnrolmentTests(TestCase):

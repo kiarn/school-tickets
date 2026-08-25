@@ -898,6 +898,46 @@ class WriteTests(TestCase):
         self.assertContains(response, reverse("tickets:status", args=[mine.pk]))
 
 
+class TicketAdminTests(TestCase):
+    """What `/admin/` may be asked about a ticket (D-52)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.boss = User.objects.enroll(cn="boss", role=Role.ADMIN)
+        cls.room = Room.objects.create(name="204")
+        cls.ticket = Ticket.objects.create(
+            room=cls.room, room_label="204", title="Black screen",
+            visibility=Visibility.TEAM, created_by=cls.boss,
+        )
+
+    def setUp(self):
+        self.client.force_login(self.boss)
+
+    def test_only_the_title_is_editable(self):
+        """The one field with no route in the application (D-42). Everything
+        else has a screen, and going through this form instead skips half of
+        what that screen does."""
+        offered = self.client.get(
+            reverse("admin:tickets_ticket_change", args=[self.ticket.pk])
+        ).context["adminform"].form.fields
+        self.assertEqual(list(offered), ["title"])
+
+    def test_a_ticket_is_not_opened_from_here(self):
+        self.assertEqual(
+            self.client.get(reverse("admin:tickets_ticket_add")).status_code, 403
+        )
+
+    def test_the_status_cannot_be_set_behind_the_applications_back(self):
+        """It would leave `resolved_by` empty and notify nobody -- a ticket
+        resolved by nobody, which the list then repeats."""
+        self.client.post(
+            reverse("admin:tickets_ticket_change", args=[self.ticket.pk]),
+            {"title": "Black screen", "status": Ticket.Status.RESOLVED},
+        )
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.status, Ticket.Status.OPEN)
+
+
 class ListViewTests(TestCase):
     """The list is the screen people actually use: what it hides matters."""
 
