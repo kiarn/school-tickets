@@ -1,0 +1,1061 @@
+# School Tickets — German translation.
+# Copyright (C) 2026  Arnaud Kientz
+# This file is distributed under the same licence as the school-tickets
+# package. SPDX-License-Identifier: GPL-3.0-or-later
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: school-tickets\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-08-25 13:05+0200\n"
+"PO-Revision-Date: 2026-08-25 13:00+0200\n"
+"Last-Translator: \n"
+"Language-Team: German\n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: accounts/admin.py:42
+msgid "The linuxmuster login, spelled as the directory spells it."
+msgstr "Der linuxmuster-Login, genau so geschrieben wie im Verzeichnis."
+
+#: accounts/admin.py:50
+msgid "No school exists yet: run `manage.py enroll` first."
+msgstr "Es gibt noch keine Schule: zuerst `manage.py enroll` ausführen."
+
+#: accounts/admin.py:56
+#, python-format
+msgid "%(cn)s is already enrolled."
+msgstr "%(cn)s ist bereits eingetragen."
+
+#: accounts/admin.py:94
+msgid "Access"
+msgstr "Zugang"
+
+#: accounts/admin.py:95
+msgid "From the directory"
+msgstr "Aus dem Verzeichnis"
+
+#: accounts/admin.py:96
+msgid "Chosen by this person"
+msgstr "Von dieser Person gewählt"
+
+#: accounts/admin.py:97
+msgid "History"
+msgstr "Verlauf"
+
+#: accounts/admin.py:143
+#, python-format
+msgid ""
+"%(cn)s is enrolled. Their name and address arrive with the first login; "
+"`manage.py set_password` grants a local password until OIDC lands."
+msgstr "%(cn)s ist eingetragen. Name und Adresse kommen mit der ersten Anmeldung; `manage.py set_password` vergibt ein lokales Passwort, bis OIDC da ist."
+
+#: accounts/admin.py:151
+msgid "This role is a Django superuser: full access to /admin/ (D-27)."
+msgstr "Diese Rolle ist ein Django-Superuser: voller Zugriff auf /admin/ (D-27)."
+
+#: accounts/authz.py:19
+msgid "Admins only"
+msgstr "Nur Admins"
+
+#: accounts/authz.py:20
+msgid "Team"
+msgstr "Team"
+
+#: accounts/authz.py:21
+msgid "Everyone enrolled"
+msgstr "Alle Eingetragenen"
+
+#: accounts/authz.py:28
+msgid "Administrator"
+msgstr "Administrator"
+
+#: accounts/authz.py:29
+msgid "Team member"
+msgstr "Teammitglied"
+
+#: accounts/authz.py:30
+msgid "Reporter"
+msgstr "Meldende Person"
+
+#: accounts/authz.py:127
+msgid "Only the teacher administrators."
+msgstr "Nur die Lehrkräfte mit Admin-Rechten."
+
+#: accounts/authz.py:128
+msgid "The repair team and the administrators."
+msgstr "Das Reparaturteam und die Admins."
+
+#: accounts/authz.py:129
+msgid "Everybody with an account here. Never the public."
+msgstr "Alle mit einem Konto hier. Nie die Öffentlichkeit."
+
+#: accounts/forms.py:28
+msgid "Follow my device"
+msgstr "Meinem Gerät folgen"
+
+#: accounts/forms.py:34
+msgid "Follow my browser"
+msgstr "Meinem Browser folgen"
+
+#: accounts/forms.py:47
+msgid "Login"
+msgstr "Login"
+
+#: accounts/forms.py:57
+msgid "Password"
+msgstr "Passwort"
+
+#: accounts/forms.py:81
+#, python-format
+msgid "Too many attempts. Try again in %(minutes)s minutes."
+msgstr "Zu viele Versuche. Probiere es in %(minutes)s Minuten noch einmal."
+
+#: accounts/forms.py:95
+msgid "Wrong login or password, or this account has no access."
+msgstr "Login oder Passwort falsch, oder dieses Konto hat keinen Zugang."
+
+#: accounts/models.py:93 templates/accounts/profile.html:94
+msgid "Display language"
+msgstr "Anzeigesprache"
+
+#: accounts/models.py:97
+msgid "Light"
+msgstr "Hell"
+
+#: accounts/models.py:98
+msgid "Dark"
+msgstr "Dunkel"
+
+#: accounts/models.py:106 templates/accounts/profile.html:99
+msgid "Theme"
+msgstr "Design"
+
+#: accounts/models.py:142
+msgid "Former member"
+msgstr "Ehemaliges Mitglied"
+
+#: accounts/models.py:255
+msgid "Enrolment"
+msgstr "Eintragung"
+
+#: accounts/models.py:256
+msgid "Role change"
+msgstr "Rollenwechsel"
+
+#: accounts/models.py:257
+msgid "OIDC binding"
+msgstr "OIDC-Verknüpfung"
+
+#: accounts/models.py:258
+msgid "Anonymisation"
+msgstr "Anonymisierung"
+
+#: accounts/models.py:259
+msgid "Badge award"
+msgstr "Abzeichen verliehen"
+
+#: accounts/models.py:263
+msgid "Badge withdrawn"
+msgstr "Abzeichen entzogen"
+
+#: accounts/models.py:264
+msgid "Sync decision"
+msgstr "Sync-Entscheidung"
+
+#: accounts/models.py:267
+msgid "Change applied by a sync"
+msgstr "Von einer Synchronisierung angewendete Änderung"
+
+#: accounts/models.py:268
+msgid "Visibility change"
+msgstr "Sichtbarkeitsänderung"
+
+#: accounts/views.py:56
+msgid "Profile saved."
+msgstr "Profil gespeichert."
+
+#: badges/admin.py:63
+msgid "Decided elsewhere"
+msgstr "Anderswo entschieden"
+
+#: badges/forms.py:26
+msgid "What they did, in the words you would say to them."
+msgstr "Was diese Person getan hat, in den Worten, die du ihr sagen würdest."
+
+#: badges/forms.py:66
+msgid "No particular ticket"
+msgstr "Kein bestimmtes Ticket"
+
+#: badges/forms.py:75
+msgid "They already hold this badge."
+msgstr "Diese Person hat dieses Abzeichen schon."
+
+#: badges/forms.py:99
+msgid "First complete install"
+msgstr "Erste komplette Installation"
+
+#: badges/forms.py:103
+msgid "What has to be done to earn it."
+msgstr "Was man tun muss, um es zu bekommen."
+
+#: badges/forms.py:121
+msgid "This school already has a badge by that name."
+msgstr "Diese Schule hat schon ein Abzeichen mit diesem Namen."
+
+#: badges/views.py:67
+#, python-format
+msgid "Badge “%(name)s” created."
+msgstr "Abzeichen „%(name)s“ erstellt."
+
+#: badges/views.py:98
+msgid "Badge awarded."
+msgstr "Abzeichen verliehen."
+
+#: notifications/delivery.py:55
+#, python-format
+msgid "%(count)s new tickets"
+msgstr "%(count)s neue Tickets"
+
+#: notifications/delivery.py:56
+#, python-format
+msgid "New ticket · %(room)s"
+msgstr "Neues Ticket · %(room)s"
+
+#: notifications/delivery.py:58
+#, python-format
+msgid "Assigned to you · %(room)s"
+msgstr "Dir zugewiesen · %(room)s"
+
+#: notifications/delivery.py:60
+#, python-format
+msgid "New note · %(room)s"
+msgstr "Neue Notiz · %(room)s"
+
+#: notifications/delivery.py:62
+#, python-format
+msgid "Marked resolved · %(room)s"
+msgstr "Als gelöst markiert · %(room)s"
+
+#: notifications/delivery.py:64
+#, python-format
+msgid "Reopened · %(room)s"
+msgstr "Wieder geöffnet · %(room)s"
+
+#: notifications/delivery.py:65 notifications/models.py:28
+msgid "Estate changes to review"
+msgstr "Zu prüfende Geräteänderungen"
+
+#: notifications/models.py:23 templates/tickets/form.html:4
+msgid "New ticket"
+msgstr "Neues Ticket"
+
+#: notifications/models.py:24
+msgid "Assigned to you"
+msgstr "Dir zugewiesen"
+
+#: notifications/models.py:25
+msgid "New note"
+msgstr "Neue Notiz"
+
+#: notifications/models.py:26
+msgid "Marked resolved"
+msgstr "Als gelöst markiert"
+
+#: notifications/models.py:27
+msgid "Reopened"
+msgstr "Wieder geöffnet"
+
+#: notifications/models.py:43
+msgid "Waiting"
+msgstr "Wartet"
+
+#: notifications/models.py:44
+msgid "Sent"
+msgstr "Gesendet"
+
+#: notifications/models.py:45
+msgid "Muted by the recipient"
+msgstr "Von der Empfängerin oder dem Empfänger stummgeschaltet"
+
+#: notifications/models.py:49
+msgid "Already read in the application"
+msgstr "In der App schon gelesen"
+
+#: notifications/models.py:52
+msgid "No longer visible"
+msgstr "Nicht mehr sichtbar"
+
+#: notifications/models.py:53
+msgid "No device subscribed"
+msgstr "Kein Gerät angemeldet"
+
+#: notifications/models.py:54
+msgid "Delivery failed"
+msgstr "Zustellung fehlgeschlagen"
+
+#: parc/models.py:9
+msgid "Manual entry"
+msgstr "Manuell erfasst"
+
+#: parc/models.py:10
+msgid "CSV import"
+msgstr "CSV-Import"
+
+#: parc/models.py:11
+msgid "lmnapi sync"
+msgstr "lmnapi-Sync"
+
+#: parc/models.py:30
+msgid "Classroom computer (pupil)"
+msgstr "Klassenraum-PC (Schüler)"
+
+#: parc/models.py:31
+msgid "Classroom computer (teacher)"
+msgstr "Klassenraum-PC (Lehrkraft)"
+
+#: parc/models.py:32
+msgid "Staff computer"
+msgstr "Dienstrechner"
+
+#: parc/models.py:33
+msgid "Server"
+msgstr "Server"
+
+#: parc/models.py:34
+msgid "Printer"
+msgstr "Drucker"
+
+#: parc/models.py:35
+msgid "Router"
+msgstr "Router"
+
+#: parc/models.py:36
+msgid "IP reservation only"
+msgstr "Nur IP-Reservierung"
+
+#: parc/models.py:134
+msgid "Observed"
+msgstr "Beobachtet"
+
+#: parc/models.py:135
+msgid "Unreachable"
+msgstr "Nicht erreichbar"
+
+#: parc/models.py:136
+msgid "Forbidden"
+msgstr "Nicht erlaubt"
+
+#: parc/models.py:157
+msgid "Succeeded"
+msgstr "Erfolgreich"
+
+#: parc/models.py:158
+msgid "Failed"
+msgstr "Fehlgeschlagen"
+
+#: parc/models.py:159
+msgid "Refused by the volume guard"
+msgstr "Vom Mengen-Schutz abgelehnt"
+
+#: parc/models.py:182
+msgid "Room disappeared"
+msgstr "Raum verschwunden"
+
+#: parc/models.py:183
+msgid "Suspected room rename"
+msgstr "Vermutete Raumumbenennung"
+
+#: parc/models.py:184
+msgid "Device disappeared"
+msgstr "Gerät verschwunden"
+
+#: parc/models.py:187
+msgid "Pending"
+msgstr "Offen"
+
+#: parc/models.py:188
+msgid "Applied"
+msgstr "Angewendet"
+
+#: parc/models.py:189
+msgid "Dismissed"
+msgstr "Verworfen"
+
+#: templates/accounts/login.html:4 templates/accounts/login.html:46
+msgid "Sign in"
+msgstr "Anmelden"
+
+#: templates/accounts/login.html:14
+msgid "Repairs, room by room."
+msgstr "Reparaturen, Raum für Raum."
+
+#: templates/accounts/login.html:55
+msgid "Accounts are added by a teacher. There is nothing to sign up for."
+msgstr "Konten legt eine Lehrkraft an. Es gibt nichts zu registrieren."
+
+#: templates/accounts/profile.html:9 templates/badges/catalog.html:9
+#: templates/base.html:17 templates/notifications/list.html:9
+#: templates/tickets/detail.html:9 templates/tickets/form.html:9
+#: templates/tickets/list.html:4 tickets/admin.py:50
+msgid "Tickets"
+msgstr "Tickets"
+
+#: templates/accounts/profile.html:23
+msgid "No longer enrolled"
+msgstr "Nicht mehr eingetragen"
+
+#: templates/accounts/profile.html:38 templates/badges/award.html:9
+#: templates/badges/catalog.html:4 templates/badges/catalog.html:12
+#: templates/base.html:115
+msgid "Badges"
+msgstr "Abzeichen"
+
+#: templates/accounts/profile.html:60
+msgid "the intervention"
+msgstr "der Einsatz"
+
+#: templates/accounts/profile.html:69
+msgid "No badge yet. They are awarded by a teacher, one repair at a time."
+msgstr "Noch kein Abzeichen. Sie werden von einer Lehrkraft verliehen, eine Reparatur nach der anderen."
+
+#: templates/accounts/profile.html:71 templates/badges/catalog.html:62
+msgid "No badge yet."
+msgstr "Noch kein Abzeichen."
+
+#: templates/accounts/profile.html:81 templates/badges/award.html:4
+#: templates/badges/award.html:16 templates/badges/catalog.html:93
+msgid "Award a badge"
+msgstr "Abzeichen verleihen"
+
+#: templates/accounts/profile.html:91
+msgid "Display"
+msgstr "Darstellung"
+
+#: templates/accounts/profile.html:104
+msgid "Both are kept with your account, so they follow you to another phone."
+msgstr "Beides wird mit deinem Konto gespeichert und folgt dir auf ein anderes Handy."
+
+#: templates/accounts/profile.html:107
+msgid "Notifications on my devices"
+msgstr "Benachrichtigungen auf meinen Geräten"
+
+#: templates/accounts/profile.html:121
+msgid ""
+"Unticking one stops the push, not the notification: it still appears in your "
+"list."
+msgstr "Wenn du eines abwählst, stoppt das den Push, nicht die Benachrichtigung: sie steht weiter in deiner Liste."
+
+#: templates/accounts/profile.html:124 templates/tickets/detail.html:193
+#: templates/tickets/detail.html:230
+msgid "Save"
+msgstr "Speichern"
+
+#: templates/badges/award.html:14
+#, python-format
+msgid "Award a badge to %(who)s"
+msgstr "%(who)s ein Abzeichen verleihen"
+
+#: templates/badges/award.html:28
+msgid "Badge"
+msgstr "Abzeichen"
+
+#: templates/badges/award.html:31
+msgid "To"
+msgstr "An"
+
+#: templates/badges/award.html:39
+msgid "Why"
+msgstr "Wofür"
+
+#: templates/badges/award.html:45
+msgid ""
+"They will read this on their profile. Write it for them, not for the record."
+msgstr "Diese Person liest das auf ihrem Profil. Schreib es für sie, nicht fürs Protokoll."
+
+#: templates/badges/award.html:49
+msgid "The intervention"
+msgstr "Der Einsatz"
+
+#: templates/badges/award.html:53
+msgid ""
+"Optional. Attaching it turns the badge into something anybody can go and "
+"look at."
+msgstr "Optional. Damit wird das Abzeichen zu etwas, das alle nachschauen können."
+
+#: templates/badges/award.html:57
+msgid "Award"
+msgstr "Verleihen"
+
+#: templates/badges/catalog.html:17
+msgid ""
+"What exists and how it is earned. Who holds what is on each person's profile "
+"— there is no ranking here, and there will not be one."
+msgstr "Was es gibt und wie man es bekommt. Wer was hat, steht auf dem Profil der Person — hier gibt es keine Rangliste, und es wird auch keine geben."
+
+#: templates/badges/catalog.html:42
+#, python-format
+msgid ""
+"\n"
+"                                    awarded once\n"
+"                                "
+msgid_plural ""
+"\n"
+"                                    awarded %(count)s times\n"
+"                                "
+msgstr[0] "\neinmal verliehen"
+msgstr[1] "\n%(count)s-mal verliehen"
+
+#: templates/badges/catalog.html:53
+msgid "Shared"
+msgstr "Gemeinsam"
+
+#: templates/badges/catalog.html:70
+msgid "Create a badge"
+msgstr "Abzeichen erstellen"
+
+#: templates/badges/catalog.html:83
+msgid ""
+"It belongs to this school only. Shared badges are a project-wide decision, "
+"because they have to be translated."
+msgstr "Es gehört nur dieser Schule. Gemeinsame Abzeichen sind eine Entscheidung des Projekts, weil sie übersetzt werden müssen."
+
+#: templates/badges/catalog.html:86
+msgid "Create"
+msgstr "Erstellen"
+
+#: templates/base.html:95 templates/notifications/list.html:4
+#: templates/notifications/list.html:13
+msgid "Notifications"
+msgstr "Benachrichtigungen"
+
+#: templates/base.html:114
+msgid "My profile"
+msgstr "Mein Profil"
+
+#: templates/base.html:124
+msgid "Light theme"
+msgstr "Helles Design"
+
+#: templates/base.html:126
+msgid "Dark theme"
+msgstr "Dunkles Design"
+
+#: templates/base.html:130
+msgid "Sign out"
+msgstr "Abmelden"
+
+#: templates/notifications/list.html:18
+msgid "Mark all read"
+msgstr "Alle als gelesen markieren"
+
+#: templates/notifications/list.html:30
+msgid "On this device"
+msgstr "Auf diesem Gerät"
+
+#: templates/notifications/list.html:33
+msgid "Send notifications to this device"
+msgstr "Benachrichtigungen an dieses Gerät senden"
+
+#: templates/notifications/list.html:36
+msgid ""
+"Nothing is sent at night or at the weekend. What arrives outside those hours "
+"waits, and stays on this page."
+msgstr "Nachts und am Wochenende wird nichts gesendet. Was außerhalb dieser Zeiten kommt, wartet und bleibt auf dieser Seite."
+
+#: templates/notifications/list.html:71
+msgid "Nothing yet."
+msgstr "Noch nichts."
+
+#: templates/notifications/list.html:110 templates/notifications/list.html:132
+msgid "This device is subscribed."
+msgstr "Dieses Gerät ist angemeldet."
+
+#: templates/notifications/list.html:111
+msgid "This device is not subscribed yet."
+msgstr "Dieses Gerät ist noch nicht angemeldet."
+
+#: templates/notifications/list.html:119
+msgid ""
+"Refused. The browser will not ask again; the list on this page keeps working."
+msgstr "Abgelehnt. Der Browser fragt nicht noch einmal; die Liste auf dieser Seite funktioniert weiter."
+
+#: templates/notifications/list.html:135
+msgid "Could not subscribe this device."
+msgstr "Dieses Gerät konnte nicht angemeldet werden."
+
+#: templates/notifications/list.html:141
+msgid "Notifications are unavailable in this browser."
+msgstr "Benachrichtigungen sind in diesem Browser nicht verfügbar."
+
+#: templates/tickets/_device_options.html:5 tickets/forms.py:114
+msgid "No particular machine"
+msgstr "Kein bestimmtes Gerät"
+
+#: templates/tickets/_photo_grid.html:33
+msgid "Remove this photo"
+msgstr "Dieses Foto entfernen"
+
+#: templates/tickets/_ticket_card.html:53
+msgid "No note says what worked."
+msgstr "Keine Notiz sagt, was geholfen hat."
+
+#: templates/tickets/_ticket_card.html:77
+#, python-format
+msgid "%(age)s ago"
+msgstr "vor %(age)s"
+
+#: templates/tickets/detail.html:51 templates/tickets/form.html:71
+msgid "Tags"
+msgstr "Schlagwörter"
+
+#: templates/tickets/detail.html:53
+msgid "Add a tag"
+msgstr "Schlagwort hinzufügen"
+
+#: templates/tickets/detail.html:67 templates/tickets/detail.html:91
+msgid "Visibility"
+msgstr "Sichtbarkeit"
+
+#: templates/tickets/detail.html:79
+msgid "Widening publishes every comment and photo already in this thread."
+msgstr "Eine Erweiterung veröffentlicht alle Notizen und Fotos, die schon in diesem Verlauf stehen."
+
+#: templates/tickets/detail.html:83
+msgid "Change visibility"
+msgstr "Sichtbarkeit ändern"
+
+#: templates/tickets/detail.html:103 templates/tickets/form.html:40
+msgid "Machine"
+msgstr "Gerät"
+
+#: templates/tickets/detail.html:114
+#, python-format
+msgid ""
+"\n"
+"                Opened by %(who)s, %(age)s ago\n"
+"            "
+msgstr "\nVon %(who)s eröffnet, vor %(age)s"
+
+#: templates/tickets/detail.html:119
+#, python-format
+msgid ""
+"\n"
+"                    reopened once\n"
+"                "
+msgid_plural ""
+"\n"
+"                    reopened %(count)s times\n"
+"                "
+msgstr[0] "\neinmal wieder geöffnet"
+msgstr[1] "\n%(count)s-mal wieder geöffnet"
+
+#: templates/tickets/detail.html:135
+msgid "On it"
+msgstr "Kümmert sich darum"
+
+#: templates/tickets/detail.html:138
+msgid "Change"
+msgstr "Ändern"
+
+#: templates/tickets/detail.html:154
+msgid "Nobody yet."
+msgstr "Noch niemand."
+
+#: templates/tickets/detail.html:163
+msgid "Put it back"
+msgstr "Wieder freigeben"
+
+#: templates/tickets/detail.html:167
+msgid "I am on it"
+msgstr "Ich mache das"
+
+#: templates/tickets/detail.html:178
+msgid "Who is on this ticket"
+msgstr "Wer sich um dieses Ticket kümmert"
+
+#: templates/tickets/detail.html:192 templates/tickets/detail.html:229
+#: templates/tickets/list.html:178
+msgid "Cancel"
+msgstr "Abbrechen"
+
+#: templates/tickets/detail.html:197 templates/tickets/detail.html:234
+#: templates/tickets/list.html:183
+msgid "Close"
+msgstr "Schließen"
+
+#: templates/tickets/detail.html:204
+msgid "How this one is filed"
+msgstr "Wie das hier einsortiert ist"
+
+#: templates/tickets/detail.html:206
+msgid "What the fault turned out to be, not what it looked like."
+msgstr "Was der Fehler wirklich war, nicht wonach es aussah."
+
+#: templates/tickets/detail.html:224
+msgid "No tag exists yet for this school."
+msgstr "Für diese Schule gibt es noch kein Schlagwort."
+
+#: templates/tickets/detail.html:248
+msgid "Reopen: not fixed"
+msgstr "Wieder öffnen: nicht behoben"
+
+#: templates/tickets/detail.html:257 templates/tickets/list.html:20
+#: tickets/models.py:37
+msgid "In progress"
+msgstr "In Arbeit"
+
+#: templates/tickets/detail.html:269
+msgid "Retested, resolved"
+msgstr "Neu getestet, gelöst"
+
+#: templates/tickets/detail.html:277
+msgid "Withdraw"
+msgstr "Zurückziehen"
+
+#: templates/tickets/detail.html:286 templates/tickets/form.html:85
+#: tickets/forms.py:65
+msgid "Photos"
+msgstr "Fotos"
+
+#: templates/tickets/detail.html:293
+msgid "What has already been tried"
+msgstr "Was schon probiert wurde"
+
+#: templates/tickets/detail.html:309
+msgid "What worked"
+msgstr "Was geholfen hat"
+
+#: templates/tickets/detail.html:311
+msgid "What worked last time"
+msgstr "Was letztes Mal geholfen hat"
+
+#: templates/tickets/detail.html:318
+#, python-format
+msgid ""
+"\n"
+"                        noted by %(who)s\n"
+"                    "
+msgstr "\nnotiert von %(who)s"
+
+#: templates/tickets/detail.html:332
+msgid "Closed, but no note says what worked. Mark the one that does."
+msgstr "Geschlossen, aber keine Notiz sagt, was geholfen hat. Markiere die richtige."
+
+#: templates/tickets/detail.html:334
+msgid "Closed, but no note says what worked."
+msgstr "Geschlossen, aber keine Notiz sagt, was geholfen hat."
+
+#: templates/tickets/detail.html:362 tickets/models.py:99
+msgid "Resolution"
+msgstr "Lösung"
+
+#: templates/tickets/detail.html:367
+msgid "Unmark"
+msgstr "Markierung entfernen"
+
+#: templates/tickets/detail.html:376
+msgid "This is what worked"
+msgstr "Das hat geholfen"
+
+#: templates/tickets/detail.html:381
+msgid "edited"
+msgstr "bearbeitet"
+
+#: templates/tickets/detail.html:386
+msgid "No note yet."
+msgstr "Noch keine Notiz."
+
+#: templates/tickets/detail.html:400
+msgid "Add a note"
+msgstr "Notiz hinzufügen"
+
+#: templates/tickets/form.html:12 templates/tickets/list.html:100
+#: templates/tickets/list.html:194
+msgid "Report a fault"
+msgstr "Störung melden"
+
+#: templates/tickets/form.html:31
+msgid "Where"
+msgstr "Wo"
+
+#: templates/tickets/form.html:33 templates/tickets/list.html:146
+msgid "Room"
+msgstr "Raum"
+
+#: templates/tickets/form.html:44
+msgid "Optional. Leave empty if the fault is not one machine's."
+msgstr "Optional. Leer lassen, wenn die Störung nicht an einem einzelnen Gerät liegt."
+
+#: templates/tickets/form.html:52
+msgid "What"
+msgstr "Was"
+
+#: templates/tickets/form.html:54
+msgid "Title"
+msgstr "Titel"
+
+#: templates/tickets/form.html:61
+msgid "Description"
+msgstr "Beschreibung"
+
+#: templates/tickets/form.html:66
+msgid "Priority"
+msgstr "Priorität"
+
+#: templates/tickets/form.html:91
+msgid "Photograph equipment, not people. Location data is removed."
+msgstr "Fotografiere Geräte, keine Personen. Standortdaten werden entfernt."
+
+#: templates/tickets/form.html:99
+msgid "Who may read this"
+msgstr "Wer das lesen darf"
+
+#: templates/tickets/form.html:103
+msgid "Open the ticket"
+msgstr "Ticket eröffnen"
+
+#: templates/tickets/list.html:13
+msgid "Views"
+msgstr "Ansichten"
+
+#: templates/tickets/list.html:16 tickets/models.py:36
+msgid "Open"
+msgstr "Offen"
+
+#: templates/tickets/list.html:24
+msgid "Urgent"
+msgstr "Dringend"
+
+#: templates/tickets/list.html:29
+msgid "Mine"
+msgstr "Meine"
+
+#: templates/tickets/list.html:38 templates/tickets/list.html:135
+msgid "Filters"
+msgstr "Filter"
+
+#: templates/tickets/list.html:55 templates/tickets/list.html:61
+#: templates/tickets/list.html:67 templates/tickets/list.html:73
+msgid "Remove this filter"
+msgstr "Diesen Filter entfernen"
+
+#: templates/tickets/list.html:72
+msgid "Closed included"
+msgstr "Geschlossene inbegriffen"
+
+#: templates/tickets/list.html:85
+msgid "No visible ticket."
+msgstr "Kein sichtbares Ticket."
+
+#: templates/tickets/list.html:88
+msgid "No ticket and no note mentions that."
+msgstr "Kein Ticket und keine Notiz erwähnt das."
+
+#: templates/tickets/list.html:90
+msgid "Nothing under these filters."
+msgstr "Nichts unter diesen Filtern."
+
+#: templates/tickets/list.html:92
+msgid "Nothing is assigned to you right now."
+msgstr "Dir ist gerade nichts zugewiesen."
+
+#: templates/tickets/list.html:94
+msgid "Nothing urgent. That is good news."
+msgstr "Nichts Dringendes. Das ist eine gute Nachricht."
+
+#: templates/tickets/list.html:96
+msgid "Tickets you are allowed to read will appear here."
+msgstr "Tickets, die du lesen darfst, erscheinen hier."
+
+#: templates/tickets/list.html:114
+msgid "Previous"
+msgstr "Zurück"
+
+#: templates/tickets/list.html:119
+#, python-format
+msgid "Page %(current)s of %(total)s"
+msgstr "Seite %(current)s von %(total)s"
+
+#: templates/tickets/list.html:124
+msgid "Next"
+msgstr "Weiter"
+
+#: templates/tickets/list.html:139
+msgid "Search"
+msgstr "Suchen"
+
+#: templates/tickets/list.html:141
+msgid "A word from a note"
+msgstr "Ein Wort aus einer Notiz"
+
+#: templates/tickets/list.html:143
+msgid "Searches titles, descriptions and notes, resolved tickets included."
+msgstr "Durchsucht Titel, Beschreibungen und Notizen, gelöste Tickets eingeschlossen."
+
+#: templates/tickets/list.html:148
+msgid "Any room"
+msgstr "Alle Räume"
+
+#: templates/tickets/list.html:157
+msgid "Tag"
+msgstr "Schlagwort"
+
+#: templates/tickets/list.html:159
+msgid "Any tag"
+msgstr "Alle Schlagwörter"
+
+#: templates/tickets/list.html:171
+msgid "Include resolved and cancelled"
+msgstr "Gelöste und zurückgezogene einschließen"
+
+#: templates/tickets/list.html:176
+msgid "Clear"
+msgstr "Zurücksetzen"
+
+#: templates/tickets/list.html:179
+msgid "Apply"
+msgstr "Anwenden"
+
+#: tickets/attachments.py:220
+#, python-format
+msgid "This image could not be read (%(mime)s). Take it again as a JPEG."
+msgstr "Dieses Bild konnte nicht gelesen werden (%(mime)s). Mach es noch einmal als JPEG."
+
+#: tickets/attachments.py:259
+#, python-format
+msgid "%(name)s is too large (maximum %(limit)s MB)."
+msgstr "%(name)s ist zu groß (maximal %(limit)s MB)."
+
+#: tickets/attachments.py:267
+#, python-format
+msgid "%(name)s is not an image."
+msgstr "%(name)s ist kein Bild."
+
+#: tickets/attachments.py:304
+#, python-format
+msgid "At most %(limit)s photos at a time."
+msgstr "Höchstens %(limit)s Fotos auf einmal."
+
+#: tickets/forms.py:74
+msgid "Black screen on the teacher's desk"
+msgstr "Schwarzer Bildschirm am Lehrerpult"
+
+#: tickets/forms.py:79
+msgid "What you saw, and what you already tried."
+msgstr "Was du gesehen hast und was du schon probiert hast."
+
+#: tickets/forms.py:89
+msgid "Choose a room"
+msgstr "Raum wählen"
+
+#: tickets/forms.py:134
+msgid "This machine is not in that room."
+msgstr "Dieses Gerät steht nicht in diesem Raum."
+
+#: tickets/forms.py:162
+msgid "What you tried, and what it did."
+msgstr "Was du probiert hast und was passiert ist."
+
+#: tickets/forms.py:177
+msgid "Write something, or attach a photo."
+msgstr "Schreib etwas oder häng ein Foto an."
+
+#: tickets/models.py:38
+msgid "Resolved"
+msgstr "Gelöst"
+
+#: tickets/models.py:39
+msgid "Cancelled"
+msgstr "Zurückgezogen"
+
+#: tickets/models.py:42
+msgid "Low"
+msgstr "Niedrig"
+
+#: tickets/models.py:43
+msgid "Normal"
+msgstr "Normal"
+
+#: tickets/models.py:44
+msgid "High"
+msgstr "Hoch"
+
+#: tickets/models.py:64
+msgid "Who may read this ticket. Widening retroactively publishes the thread."
+msgstr "Wer dieses Ticket lesen darf. Eine Erweiterung veröffentlicht rückwirkend den ganzen Verlauf."
+
+#: tickets/models.py:168
+msgid "Primary"
+msgstr "Primär"
+
+#: tickets/models.py:169
+msgid "Secondary"
+msgstr "Sekundär"
+
+#: tickets/models.py:170
+msgid "Accent"
+msgstr "Akzent"
+
+#: tickets/models.py:171
+msgid "Neutral"
+msgstr "Neutral"
+
+#: tickets/models.py:172
+msgid "Info"
+msgstr "Info"
+
+#: tickets/models.py:173
+msgid "Success"
+msgstr "Erfolg"
+
+#: tickets/models.py:174
+msgid "Warning"
+msgstr "Warnung"
+
+#: tickets/models.py:175
+msgid "Error"
+msgstr "Fehler"
+
+#: tickets/models.py:184
+msgid "Colour"
+msgstr "Farbe"
+
+#: tickets/models.py:185
+msgid "Leave empty for a plain outline."
+msgstr "Leer lassen für eine schlichte Umrandung."
+
+#: tickets/views.py:241
+msgid "Ticket opened."
+msgstr "Ticket eröffnet."
+
+#: tickets/views.py:336
+msgid "Status updated."
+msgstr "Status aktualisiert."
+
+#: tickets/views.py:391
+msgid "Assignments updated."
+msgstr "Zuweisungen aktualisiert."
+
+#: tickets/views.py:429
+msgid "Tags updated."
+msgstr "Schlagwörter aktualisiert."
+
+#: tickets/views.py:469
+msgid "Marked as what worked."
+msgstr "Als das markiert, was geholfen hat."
+
+#: tickets/views.py:475
+msgid "Resolution mark removed."
+msgstr "Lösungsmarkierung entfernt."
+
+#: tickets/views.py:500
+msgid "Visibility updated."
+msgstr "Sichtbarkeit aktualisiert."
+
+#: tickets/views.py:553
+msgid "Photo removed."
+msgstr "Foto entfernt."

@@ -1,14 +1,15 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""What the crest has to be, said once at startup rather than never.
+"""What an installation has to look like, said once at startup rather than never.
 
-``ST_LOGO`` is refused silently by ``branding.logo_path`` when it is not a
-square PNG -- the header simply draws no crest, the manifest declares no icon,
-and nothing anywhere explains why. That silence is the whole reason this file
-exists: the requirement is checked once, at startup and on ``manage.py check``,
-and the answer names the file and what is wrong with it.
+Both checks here guard the same failure shape: something is configured, the
+application quietly does without it, and **nothing anywhere explains why**. A
+crest that is not a square PNG is refused by ``branding.logo_path`` -- the
+header simply draws no crest and the manifest declares no icon. A catalogue
+that was never compiled leaves every page in English on a German-speaking
+school's server, and gettext says nothing about it either.
 
-Warnings, never errors: a wrong crest must not stop a school's ticket system
-from starting on a Monday morning.
+Warnings, never errors: neither a wrong crest nor a missing catalogue must stop
+a school's ticket system from starting on a Monday morning.
 """
 
 from pathlib import Path
@@ -67,3 +68,35 @@ def crest_is_a_square_png(app_configs, **kwargs):
             id="school_tickets.W005",
         )]
     return []
+
+
+@register()
+def catalogues_are_compiled(app_configs, **kwargs):
+    """A translation nobody compiled is a translation nobody sees.
+
+    ``.mo`` files are build artefacts and stay out of the repository (D-34):
+    they derive from the ``.po`` by one deterministic command, and a binary in
+    git is a second source of truth that can silently drift from the first.
+    The cost of that choice is exactly this failure -- deploy without running
+    ``compilemessages`` and the application comes out in English, with no error
+    and no log line -- so the cost is paid here instead.
+
+    English is skipped: its ``msgstr`` are empty on purpose, the msgid being
+    the English already (D-23).
+    """
+    missing = []
+    for code, _name in settings.LANGUAGES:
+        if code == "en":
+            continue
+        for root in settings.LOCALE_PATHS:
+            source = Path(root) / code / "LC_MESSAGES" / "django.po"
+            if source.is_file() and not source.with_suffix(".mo").is_file():
+                missing.append(code)
+    if not missing:
+        return []
+    return [Warning(
+        "Translations are not compiled: %s" % ", ".join(sorted(set(missing))),
+        hint="Run `manage.py compilemessages -i .venv`. Without it every page "
+             "renders in English, whatever LANGUAGE_CODE says.",
+        id="school_tickets.W006",
+    )]

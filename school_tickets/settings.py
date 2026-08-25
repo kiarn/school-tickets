@@ -115,6 +115,8 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # Source strings (msgid) are English; de/fr/en catalogues come from Crowdin.
 LANGUAGE_CODE = "de"
 LANGUAGES = [("de", "Deutsch"), ("fr", "Français"), ("en", "English")]
+# Tests assert the source strings, not a translation. See school_tickets/runner.py.
+TEST_RUNNER = "school_tickets.runner.EnglishTestRunner"
 LOCALE_PATHS = [BASE_DIR / "locale"]
 USE_I18N = True
 TIME_ZONE = os.environ.get("ST_TIME_ZONE", "Europe/Berlin")

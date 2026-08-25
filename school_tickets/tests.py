@@ -11,6 +11,8 @@ import json
 import tempfile
 from pathlib import Path
 
+from unittest import skipUnless
+
 from django.conf import settings
 from django.test import TestCase, override_settings
 from django.urls import reverse
@@ -18,7 +20,7 @@ from PIL import Image
 
 from accounts.authz import Role
 from accounts.models import School, User
-from school_tickets.checks import crest_is_a_square_png
+from school_tickets.checks import catalogues_are_compiled, crest_is_a_square_png
 
 
 class SiteNameTests(TestCase):
@@ -312,3 +314,120 @@ class CrestCheckTests(TestCase):
         self.assertEqual(
             self.warn(self.png("small.png", (128, 128))), ["school_tickets.W005"]
         )
+
+
+class CatalogueTests(TestCase):
+    """The catalogues themselves (D-23, D-34).
+
+    Two of these read the `.po` files rather than the compiled `.mo`, because
+    the `.po` are what the repository carries: a string added and never
+    translated has to fail here, on a fresh clone, before anybody has run
+    `compilemessages`.
+    """
+
+    LOCALE = Path(settings.BASE_DIR) / "locale"
+
+    def entries(self, language):
+        """(msgid, msgstr-is-empty) for every entry but the header."""
+        text = (self.LOCALE / language / "LC_MESSAGES" / "django.po").read_text()
+        for block in text.split("\n\n"):
+            lines = block.split("\n")
+            msgid = [l for l in lines if l.startswith("msgid ")]
+            if not msgid or msgid[0] == 'msgid ""':
+                continue  # the header, whose msgid is empty by definition
+            body = [l for l in lines if l.startswith("msgstr")]
+            filled = any(l not in ('msgstr ""', 'msgstr[0] ""', 'msgstr[1] ""') for l in body)
+            yield msgid[0], filled
+
+    def test_german_and_french_are_complete(self):
+        """Untranslated is not a state this project ships in: the school is
+        German-speaking, and a half-translated page is worse than an English
+        one -- it reads as broken rather than as untranslated."""
+        for language in ("de", "fr"):
+            with self.subTest(language=language):
+                missing = [msgid for msgid, filled in self.entries(language) if not filled]
+                self.assertEqual(missing, [], f"{len(missing)} untranslated in {language}")
+
+    def test_the_english_catalogue_is_deliberately_empty(self):
+        """The msgid **are** the English (D-23), so every msgstr falls back to
+        them. The catalogue exists for Crowdin to have a source, not to hold a
+        second copy of the same sentences."""
+        filled = [msgid for msgid, is_filled in self.entries("en") if is_filled]
+        # Only the plural entries carry text: an empty msgstr[0] would leave
+        # gettext to guess a plural rule it has not been given.
+        self.assertTrue(all("once" in msgid for msgid in filled), filled)
+
+    def test_the_french_plural_rule_is_not_the_english_one(self):
+        """makemessages writes `n != 1` for every language it creates. French
+        counts zero as singular, so the header has to be corrected by hand --
+        and this is what remembers it after the next `makemessages`."""
+        header = (self.LOCALE / "fr" / "LC_MESSAGES" / "django.po").read_text()
+        self.assertIn("plural=(n > 1)", header)
+        german = (self.LOCALE / "de" / "LC_MESSAGES" / "django.po").read_text()
+        self.assertIn("plural=(n != 1)", german)
+
+    @skipUnless(
+        (Path(settings.BASE_DIR) / "locale/de/LC_MESSAGES/django.mo").exists(),
+        "catalogues not compiled: run manage.py compilemessages",
+    )
+    def test_a_page_really_comes_out_in_german(self):
+        """`.mo` files are build artefacts and stay out of the repository, so
+        this one skips rather than fails on a fresh clone. It is still the only
+        test that proves the whole chain -- extraction, translation, LocaleMiddleware."""
+        school = School.objects.create(slug="lgb", name="LGB")
+        person = User.objects.enroll(school=school, cn="lena", role=Role.MEMBER)
+        person.language = "de"
+        person.save(update_fields=["language"])
+        self.client.force_login(person)
+        page = self.client.get(reverse("tickets:list")).content.decode()
+        self.assertIn("Störung melden", page)      # Report a fault
+        self.assertIn("Kein sichtbares Ticket.", page)
+        self.assertNotIn("Report a fault", page)
+
+
+class CatalogueCheckTests(TestCase):
+    """`.mo` files are build artefacts (D-34), and this is what that costs.
+
+    Deploy without `compilemessages` and every page comes out in English, with
+    no error and no log line. Keeping the binaries out of the repository is
+    only defensible if their absence is loud.
+    """
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.addCleanup(__import__("shutil").rmtree, self.dir, ignore_errors=True)
+
+    def catalogue(self, language, *, compiled):
+        path = Path(self.dir) / language / "LC_MESSAGES"
+        path.mkdir(parents=True)
+        (path / "django.po").write_text('msgid ""\nmsgstr ""\n')
+        if compiled:
+            (path / "django.mo").write_bytes(b"")
+
+    def warn(self):
+        with override_settings(LOCALE_PATHS=[self.dir]):
+            return [warning.id for warning in catalogues_are_compiled(None)]
+
+    def test_a_compiled_catalogue_says_nothing(self):
+        self.catalogue("de", compiled=True)
+        self.catalogue("fr", compiled=True)
+        self.assertEqual(self.warn(), [])
+
+    def test_a_catalogue_left_uncompiled_is_named(self):
+        self.catalogue("de", compiled=False)
+        self.catalogue("fr", compiled=True)
+        with override_settings(LOCALE_PATHS=[self.dir]):
+            warnings = catalogues_are_compiled(None)
+        self.assertEqual([w.id for w in warnings], ["school_tickets.W006"])
+        self.assertIn("de", warnings[0].msg)
+        self.assertNotIn("fr", warnings[0].msg)
+
+    def test_english_is_not_expected_to_be_compiled(self):
+        """Its msgstr are empty by design: the msgid are the English (D-23)."""
+        self.catalogue("en", compiled=False)
+        self.assertEqual(self.warn(), [])
+
+    def test_a_language_with_no_catalogue_at_all_is_not_a_warning(self):
+        """LANGUAGES may list one nobody has started. That is a translation
+        that does not exist, not a build step somebody forgot."""
+        self.assertEqual(self.warn(), [])

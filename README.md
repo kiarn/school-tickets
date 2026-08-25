@@ -65,13 +65,26 @@ nothing and provisions nobody, it only checks that an already-enrolled person
 is who they say they are.
 
 ```sh
-.venv/bin/python manage.py test              # 263 tests, visibility among them
+.venv/bin/python manage.py test              # 271 tests, visibility among them
 .venv/bin/python manage.py run_worker --once # one pass of every due job
 .venv/bin/python manage.py vapid_keys        # Web Push keys, once per install
 ```
 
-Working on translations additionally needs GNU gettext (`apt install gettext`),
-otherwise `makemessages` fails on `msguniq`.
+Translations need GNU gettext (`apt install gettext`), and the compiled
+catalogues are a **build artefact**: `locale/*/LC_MESSAGES/*.mo` is not in the
+repository, so a fresh clone renders English until they are built.
+
+```sh
+.venv/bin/python manage.py compilemessages -i .venv   # after every clone
+.venv/bin/python manage.py makemessages -l de -l fr -l en \
+    -i '.venv/*' -i 'tools/*' -i 'staticfiles/*'      # after adding a string
+```
+
+Both commands walk the current directory, hence the ignores: without them
+`compilemessages` rebuilds every catalogue Django itself ships inside the
+virtualenv. Forget the compilation entirely and `manage.py check` says so
+(`W006`) -- the price of keeping the binaries out of the repository is that
+their absence has to be loud.
 
 ## The two processes
 
@@ -143,8 +156,24 @@ the code without being able to use it.
 
 Code is **English** throughout: identifiers, comments, docstrings, test names
 and translatable strings. Source strings are English, which makes English a
-translation like any other -- an `en` catalogue is needed alongside `de` and
-`fr`.
+translation like any other -- so `locale/en/` exists beside `de` and `fr`, and
+its `msgstr` are deliberately empty: gettext falls back to the msgid, which is
+already the English.
+
+German and French are complete and are held that way by a test that reads the
+`.po` files: a string added without a translation fails the suite on a fresh
+clone, before anybody has compiled anything. Both address the reader as **du /
+tu** (D-34) -- the application is first the pupils' own tool.
+
+Two traps, both of which cost something before they were understood:
+
+- **the test suite runs in English**, forced in `school_tickets/runner.py`.
+  `LANGUAGE_CODE` is German, so the day German was translated, fourteen tests
+  that had never mentioned a language began to fail. A test asserts the strings
+  this project writes; one that wants a translation asks for it explicitly.
+- **`makemessages` writes the English plural rule into every catalogue it
+  creates.** French counts zero as singular (`plural=(n > 1)`), so the header
+  is corrected by hand after each run -- and a test remembers it.
 
 The design journal is French and lives outside this repository (see
 "Design journal" below).
@@ -219,10 +248,11 @@ be written honestly before somebody has read a real response from either system
   shipped -- catalogue badges are `msgid` that travel with the code and are
   translated, while a tag is a school's own vocabulary and is never translated,
   so the two cannot be seeded by the same mechanism.
-- **Empty translation catalogues.** `locale/` holds no `.po` at all, so the
-  five catalogue badges shipped with the demo run their names through
-  `gettext()` and come back in English, next to a school badge in German.
-  Nothing is broken; nothing is translated either (D-15).
+- **Crowdin.** The catalogues are written and complete, but nothing is wired
+  to the translation platform the other linuxmuster projects use (D-15), and
+  its free open-source tier generally assumes a public repository while this
+  one will be private (D-19). Until then, a fourth language means editing a
+  `.po` by hand.
 - **An automatic install prompt, and anything offline.** The manifest is there
   (D-33), so the application installs to a home screen -- but `sw.js` has no
   `fetch` handler, deliberately: no caching, no offline shell (doc 09). Chrome
