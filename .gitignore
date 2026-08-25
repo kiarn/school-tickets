@@ -21,6 +21,7 @@ __pycache__/
 /tools/demo_settings.py
 /tools/run-demo.sh
 /tools/seed_demo.py
+/tools/demo-logo.png
 /demo-media/
 .env
 # Real container environment files: the examples are versioned, these are not.
