@@ -248,12 +248,36 @@
    may put somebody else here (see tickets.views.ticket_claim). {% endcomment %}
 <section class="card bg-base-100 shadow-sm mb-3">
     <div class="card-body gap-3 py-4">
+        {% comment %} Taking a ticket is a small gesture and no longer a full-width bar
+           (D-44). It joins the heading, top right, where the controls of this
+           card already are -- but it keeps its words next to the glyph: it is
+           the one act this whole application exists to make easy, and "✋" alone
+           says nothing to somebody meeting the screen for the first time.
+           On a phone there is no hover to reveal a title. {% endcomment %}
         <div class="flex items-center justify-between gap-2">
             <h2 class="text-sm font-semibold opacity-70">{% translate "On it" %}</h2>
-            {% if assignable %}
-                <button type="button" class="btn btn-ghost btn-xs"
-                        onclick="assign_modal.showModal()">{% translate "Change" %}</button>
-            {% endif %}
+            <div class="flex items-center gap-1 shrink-0">
+                {% if assignable %}
+                    <button type="button" class="btn btn-ghost btn-xs"
+                            onclick="assign_modal.showModal()">{% translate "Change" %}</button>
+                {% endif %}
+                {% if can_work %}
+                    <form method="post" action="{% url 'tickets:claim' ticket.pk %}">
+                        {% csrf_token %}
+                        {% if is_assignee %}
+                            <button type="submit" class="btn btn-ghost btn-xs gap-1">
+                                <span aria-hidden="true">↩</span>
+                                {% translate "Put it back" %}
+                            </button>
+                        {% else %}
+                            <button type="submit" class="btn btn-primary btn-xs gap-1">
+                                <span aria-hidden="true">✋</span>
+                                {% translate "I am on it" %}
+                            </button>
+                        {% endif %}
+                    </form>
+                {% endif %}
+            </div>
         </div>
 
         <div class="flex flex-wrap gap-1.5">
@@ -270,21 +294,6 @@
                 <span class="text-sm opacity-60">{% translate "Nobody yet." %}</span>
             {% endfor %}
         </div>
-
-        {% if can_work %}
-            <form method="post" action="{% url 'tickets:claim' ticket.pk %}">
-                {% csrf_token %}
-                {% if is_assignee %}
-                    <button type="submit" class="btn btn-outline btn-sm w-full">
-                        {% translate "Put it back" %}
-                    </button>
-                {% else %}
-                    <button type="submit" class="btn btn-primary btn-sm w-full">
-                        {% translate "I am on it" %}
-                    </button>
-                {% endif %}
-            </form>
-        {% endif %}
     </div>
 </section>
 
@@ -400,6 +409,13 @@
     </dialog>
 {% endif %}
 
+{% comment %} One form for the one marked note: the view unmarks whatever is marked, so
+   this posts nothing but its token. {% endcomment %}
+{% if can_work and ticket.resolution_comment_id %}
+    <form method="post" action="{% url 'tickets:resolution' ticket.pk %}"
+          id="unmark-form" hidden>{% csrf_token %}</form>
+{% endif %}
+
 {% comment %} Same idiom as the status menu: one hidden form, and each entry submits its
    own value. Behind the same guard as the menu -- a reader who may move nothing
    is not handed the route. {% endcomment %}
@@ -475,11 +491,65 @@
 
     {% for comment in comments %}
         <div class="chat {% if comment.author_id == user.pk %}chat-end{% else %}chat-start{% endif %}">
-            <div class="chat-header text-xs opacity-60 gap-1">
+            {% comment %} Everything the footer used to hold now sits on the header line
+               (D-46): who wrote, when, whether it was edited, and the mark. A note
+               cost three rows -- name, bubble, controls -- and the third was a
+               whole line of screen for a button that most notes never use. The
+               thread is what this page is read for; it is what should get the
+               room. {% endcomment %}
+            <div class="chat-header text-xs opacity-60 gap-1 items-center flex-wrap">
                 {{ comment.author }}
                 <time datetime="{{ comment.created_at|date:'c' }}">
                     {{ comment.created_at|timesince }}
                 </time>
+                {% if comment.edited_at %}
+                    <span>{% translate "edited" %}</span>
+                {% endif %}
+                {% comment %} The mark is offered on every note, and that is the proposal
+                   D-29 asks for: whoever repaired says which one it was, on the
+                   spot, without a form standing in the way. {% endcomment %}
+                {% if comment.pk == ticket.resolution_comment_id %}
+                    {% comment %} The chip *is* the control (D-47): "Retirer la marque" spent a
+                       button's worth of line next to a label that said the same
+                       thing. Same idiom as the filter chips of the list -- the
+                       cross carries the gesture, an `sr-only` names it, since a
+                       button reading "Resolution" must not announce itself as
+                       one thing and do another.
+
+                       Full-size badge, not `badge-xs`: at 24 px it is a target
+                       WCAG 2.5.8 accepts, where `badge-xs` (16 px) and `badge-sm`
+                       (20 px) are below the floor. A chip that does nothing may be
+                       small; one that undoes something may not. {% endcomment %}
+                    {% if can_work %}
+                        <button type="submit" form="unmark-form"
+                                class="badge badge-success gap-1"
+                                title="{% translate 'Unmark' %}">
+                            {% translate "Resolution" %}
+                            <span aria-hidden="true">✕</span>
+                            <span class="sr-only">{% translate "Unmark" %}</span>
+                        </button>
+                    {% else %}
+                        <span class="badge badge-success">{% translate "Resolution" %}</span>
+                    {% endif %}
+                {% elif can_work %}
+                    {% comment %} A check and nothing else, unlike the claim button of D-44
+                       (D-45). Two things separate the cases: this one is drawn on
+                       **every** note of the thread, so its label was repeated as
+                       many times as there are comments; and a tick is a settled
+                       convention for "this is the right one", where a raised hand
+                       is not one for "I take this on". The sentence stays as the
+                       accessible name -- it is what a screen reader announces, and
+                       what a mouse reveals. {% endcomment %}
+                    <form method="post" action="{% url 'tickets:resolution' ticket.pk %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="comment" value="{{ comment.pk }}">
+                        <button type="submit" class="btn btn-ghost btn-xs btn-circle text-success"
+                                aria-label="{% translate 'This is what worked' %}"
+                                title="{% translate 'This is what worked' %}">
+                            <span aria-hidden="true" class="text-base leading-none">✓</span>
+                        </button>
+                    </form>
+                {% endif %}
             </div>
             <div class="chat-bubble whitespace-pre-line break-words {% if comment.pk == ticket.resolution_comment_id %}chat-bubble-success{% endif %}">
                 {{ comment.body }}
@@ -487,33 +557,6 @@
                     <div class="mt-2 w-48 max-w-full">
                         {% include "tickets/_photo_grid.html" with items=comment.attachments.all cols="grid-cols-2" %}
                     </div>
-                {% endif %}
-            </div>
-            <div class="chat-footer text-xs opacity-60 flex flex-wrap items-center gap-2">
-                {% comment %} The mark is offered on every note, and that is the proposal
-                   D-29 asks for: whoever repaired says which one it was, on the
-                   spot, without a form standing in the way. {% endcomment %}
-                {% if comment.pk == ticket.resolution_comment_id %}
-                    <span class="badge badge-success badge-xs">{% translate "Resolution" %}</span>
-                    {% if can_work %}
-                        <form method="post" action="{% url 'tickets:resolution' ticket.pk %}">
-                            {% csrf_token %}
-                            <button type="submit" class="btn btn-ghost btn-xs">
-                                {% translate "Unmark" %}
-                            </button>
-                        </form>
-                    {% endif %}
-                {% elif can_work %}
-                    <form method="post" action="{% url 'tickets:resolution' ticket.pk %}">
-                        {% csrf_token %}
-                        <input type="hidden" name="comment" value="{{ comment.pk }}">
-                        <button type="submit" class="btn btn-ghost btn-xs">
-                            {% translate "This is what worked" %}
-                        </button>
-                    </form>
-                {% endif %}
-                {% if comment.edited_at %}
-                    <span>{% translate "edited" %}</span>
                 {% endif %}
             </div>
         </div>

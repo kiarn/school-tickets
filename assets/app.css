@@ -111,6 +111,33 @@
     --color-error: oklch(70% 0.19 27);
 }
 
+/* --- The thread's bubbles ---------------------------------------------------
+ *
+ * daisyUI paints `.chat-bubble` with `base-300`, which is right in the light
+ * theme (94% page, 87% bubble) and wrong in the dark one: D-18 pushed the dark
+ * `base-300` DOWN to 14% to make card borders read, so the bubble came out
+ * *darker* than the 18.5% page behind it -- a hole rather than a shape
+ * (Arnaud, 2026-08-25).
+ *
+ * In dark the bubble takes `base-100`, the same surface as the cards: down
+ * there a surface reads as raised by being lighter, which is the rule D-18
+ * already wrote for the cards themselves.
+ *
+ * The hairline comes with it, for the reason D-18 already gave the cards: a
+ * shadow does not survive a dark theme, an outline does. Two surfaces 10
+ * lightness points apart are told apart by their fill; the border is what makes
+ * the shape certain.
+ *
+ * `:not(.chat-bubble-success)` is not decoration. This rule is unlayered and
+ * daisyUI's modifier is layered, so without it the resolution bubble would
+ * lose its green -- an unlayered rule beats a layered one whatever the
+ * specificity.
+ */
+[data-theme="dark"] .chat-bubble:not(.chat-bubble-success) {
+    background-color: var(--color-base-100);
+    border: var(--border, 1px) solid var(--color-base-300);
+}
+
 /* Unlayered: daisyUI's `.card` sits in `@layer utilities`, and an unlayered
  * rule beats a layered one whatever the order. */
 .card {
@@ -150,6 +177,14 @@ textarea {
 .tab,
 .dock > * {
     min-height: 2.75rem;
+}
+
+/* A round button gets the floor on both sides or it stops being round:
+ * `.btn-circle` takes its width AND its height from `--size`, and the rule
+ * above lifts only the height. At `btn-xs` that made a 24x44 oval -- which is
+ * what the pencil of D-41 had quietly become. */
+.btn-circle {
+    min-width: 2.75rem;
 }
 
 /* Any bottom bar sits above the home indicator, not under it. */
