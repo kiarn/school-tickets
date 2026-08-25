@@ -13,17 +13,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
 <title>{% block title %}{% translate "Tickets" %}{% endblock %} · {{ brand_name }}</title>
-{% comment %} The crest, when the instance has one, answers the favicon too -- SVG and
-   PNG both work as one, and the application had none at all. {% endcomment %}
+{% comment %} The crest, when the instance has one, answers the favicon too -- one PNG
+   for the header, the favicon, the Push and the home screen (D-33). {% endcomment %}
 {% if brand_logo %}<link rel="icon" href="{% url 'logo' %}">{% endif %}
 {% comment %} The manifest is what turns the site into something installable on a home
    screen (D-33). It is served from the root, like sw.js: a manifest's scope
    cannot reach above the directory it comes from. {% endcomment %}
 <link rel="manifest" href="{% url 'manifest' %}">
-{% if brand_icon %}
-    {% comment %} iOS reads none of the manifest's icons -- it reads this one, and only
-       as a PNG. Which is why a crest given as an SVG installs everywhere but
-       there. {% endcomment %}
+{% if brand_logo %}
+    {% comment %} iOS reads none of the manifest's icons -- it reads this one. Which is
+       the reason the crest is a PNG and nothing else. {% endcomment %}
     <link rel="apple-touch-icon" href="{% url 'icon' 180 %}">
 {% endif %}
 {% comment %} The colour behind the status bar once installed, which the manifest can

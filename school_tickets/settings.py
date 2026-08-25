@@ -17,6 +17,9 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    # The project package itself: no model, no migration, only the startup
+    # checks of school_tickets/checks.py.
+    "school_tickets.apps.SchoolTicketsConfig",
     "accounts",
     "parc",
     "tickets",
@@ -135,8 +138,9 @@ ST_DEFAULT_SCHOOL_SLUG = os.environ.get("ST_DEFAULT_SCHOOL", "default-school")
 # One instance serves one school, so its name and crest are configuration and
 # not data. See school_tickets/branding.py.
 ST_SITE_NAME = os.environ.get("ST_SITE_NAME", "school-tickets")
-# Absolute path to an SVG or PNG. Empty means the name stands alone, which is
-# what a fresh install looks like.
+# Absolute path to a square PNG. Empty means the name stands alone, which is
+# what a fresh install looks like. school_tickets/checks.py says at startup
+# when the file is there but not usable.
 ST_LOGO = os.environ.get("ST_LOGO", "")
 # What fits under an icon on a home screen. Falls back to the full name, which
 # the phone then elides itself -- a truncation we would do worse.

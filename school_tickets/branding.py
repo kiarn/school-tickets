@@ -22,9 +22,12 @@ from django.urls import reverse
 from django.utils.translation import get_language
 from PIL import Image
 
-#: What the view will serve, and nothing else. Both render at any size, which
-#: is what a header, a favicon and a notification icon each need at once.
-TYPES = {".svg": "image/svg+xml", ".png": "image/png"}
+#: PNG, and nothing else. SVG was served for a while and cost more than it
+#: gave: iOS reads no SVG, so a crest given as one installed everywhere but on
+#: the phones this application is meant for, and rasterising it would mean
+#: carrying a rasteriser. One format means one path through this module.
+SUFFIX = ".png"
+CONTENT_TYPE = "image/png"
 
 #: The bar behind the phone's status bar, and the page under it, as hex.
 #: Neither a manifest nor a <meta> parses the oklch() the stylesheet is written
@@ -46,6 +49,10 @@ SERVED_SIZES = frozenset(ICON_SIZES) | {APPLE_TOUCH_SIZE}
 def logo_path():
     """The configured crest, or None -- the normal state of a fresh install.
 
+    Only the suffix and the existence are checked, because this runs on every
+    page render: whether the file is square is a question for ``checks.py``,
+    which asks it once at startup and says so out loud.
+
     No traversal check, unlike ``tickets.attachments.resolved_path``: this path
     comes from the process environment, set by whoever installed the instance,
     and is never touched by a request. The suffix allowlist is about serving
@@ -54,7 +61,7 @@ def logo_path():
     if not settings.ST_LOGO:
         return None
     path = Path(settings.ST_LOGO)
-    if path.suffix.lower() not in TYPES or not path.is_file():
+    if path.suffix.lower() != SUFFIX or not path.is_file():
         return None
     return path
 
@@ -69,7 +76,6 @@ def identity(request):
     it would silently render the domain instead. A test found it; a reader
     would not have.
     """
-    path = logo_path()
     # The status bar colour of an installed application. An account that chose
     # a theme is answered here and once, server-side, exactly as `data-theme`
     # is; an account that follows its device gets the two media-scoped tags
@@ -77,10 +83,11 @@ def identity(request):
     chosen = getattr(getattr(request, "user", None), "theme", "")
     return {
         "brand_name": settings.ST_SITE_NAME,
-        "brand_logo": bool(settings.ST_LOGO),
-        # A PNG crest can be resized into the square icon iOS wants; an SVG
-        # cannot, not without a rasteriser this project does not carry (D-33).
-        "brand_icon": path is not None and path.suffix.lower() == ".png",
+        # Resolved, not merely configured: a path that will 404 must not be
+        # drawn as a favicon, a header image and an apple-touch-icon. The cost
+        # is one stat() per render, which is the price of never pointing three
+        # tags at a file the server refuses to serve.
+        "brand_logo": logo_path() is not None,
         "brand_theme_color": THEME_COLOR.get(chosen, ""),
         "brand_theme_color_light": THEME_COLOR["light"],
         "brand_theme_color_dark": THEME_COLOR["dark"],
@@ -102,7 +109,7 @@ def logo(request):
     path = logo_path()
     if path is None:
         raise Http404
-    response = FileResponse(path.open("rb"), content_type=TYPES[path.suffix.lower()])
+    response = FileResponse(path.open("rb"), content_type=CONTENT_TYPE)
     # It changes when a school changes its crest, which is to say never.
     response["Cache-Control"] = "public, max-age=86400"
     return response
@@ -111,21 +118,21 @@ def logo(request):
 def icon(request, size):
     """The crest as a square PNG of one declared size.
 
-    A home screen wants sizes, and a school has one file: rather than asking a
-    sysadmin for four, the one they configured is fitted -- never cropped, a
-    crest is not a decoration to be trimmed -- and centred on a transparent
-    square. Only the sizes the manifest and the <head> actually name are
-    computed, because this endpoint is public and resizing on demand for an
-    arbitrary number would be a way of spending someone else's CPU.
+    A home screen wants sizes and a school has one file, so the configured
+    crest is scaled to each. It is expected to be square (``checks.py`` says so
+    at startup); one that is not is still fitted -- never cropped, a crest is
+    not a decoration to be trimmed -- and centred on a transparent square,
+    because a manifest that declares ``192x192`` and serves 300x100 declares
+    something false.
 
-    PNG only. Rasterising an SVG needs a library this project does not carry
-    (D-33), so an SVG crest is declared to the manifest as it is, at "any"
-    size, and iOS -- which reads no SVG -- simply gets no icon.
+    Only the sizes the manifest and the <head> actually name are computed:
+    this endpoint is public, and resizing on demand for an arbitrary number
+    would be a way of spending someone else's CPU.
     """
     if size not in SERVED_SIZES:
         raise Http404
     path = logo_path()
-    if path is None or path.suffix.lower() != ".png":
+    if path is None:
         raise Http404
 
     buffer = BytesIO()
@@ -152,17 +159,13 @@ def manifest(request):
     login page when nobody is signed in. That is the wanted behaviour: the
     installed icon opens on work, not on a start screen.
     """
-    path = logo_path()
     icons = []
-    if path is not None and path.suffix.lower() == ".svg":
-        # One entry, "any": an SVG is every size at once.
-        icons = [{"src": reverse("logo"), "sizes": "any", "type": "image/svg+xml"}]
-    elif path is not None:
+    if logo_path() is not None:
         icons = [
             {
                 "src": reverse("icon", args=[size]),
                 "sizes": f"{size}x{size}",
-                "type": "image/png",
+                "type": CONTENT_TYPE,
             }
             for size in ICON_SIZES
         ]

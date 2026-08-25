@@ -18,6 +18,7 @@ from PIL import Image
 
 from accounts.authz import Role
 from accounts.models import School, User
+from school_tickets.checks import crest_is_a_square_png
 
 
 class SiteNameTests(TestCase):
@@ -68,8 +69,8 @@ class LogoTests(TestCase):
     def setUp(self):
         self.dir = tempfile.mkdtemp()
         self.addCleanup(__import__("shutil").rmtree, self.dir, ignore_errors=True)
-        self.crest = Path(self.dir) / "crest.svg"
-        self.crest.write_text('<svg xmlns="http://www.w3.org/2000/svg"/>')
+        self.crest = Path(self.dir) / "crest.png"
+        Image.new("RGBA", (512, 512), (10, 20, 30, 255)).save(self.crest)
 
     def test_a_fresh_install_has_no_crest_and_says_so_with_a_404(self):
         """Empty is the normal state, not a misconfiguration."""
@@ -81,13 +82,18 @@ class LogoTests(TestCase):
         with override_settings(ST_LOGO=str(self.crest)):
             response = self.client.get(reverse("logo"))
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response["Content-Type"], "image/svg+xml")
+        self.assertEqual(response["Content-Type"], "image/png")
 
-    def test_only_svg_and_png_are_served(self):
-        other = Path(self.dir) / "crest.txt"
-        other.write_text("not a crest")
-        with override_settings(ST_LOGO=str(other)):
-            self.assertEqual(self.client.get(reverse("logo")).status_code, 404)
+    def test_nothing_but_a_png_is_served(self):
+        """SVG was served for a while and cost more than it gave (D-33): iOS
+        reads none, so a crest given as one installed everywhere but on the
+        phones this application is for."""
+        for name, content in (("crest.svg", '<svg xmlns="http://www.w3.org/2000/svg"/>'),
+                              ("crest.txt", "not a crest")):
+            other = Path(self.dir) / name
+            other.write_text(content)
+            with override_settings(ST_LOGO=str(other)):
+                self.assertEqual(self.client.get(reverse("logo")).status_code, 404)
 
     def test_a_configured_path_that_is_not_there_is_a_404_not_a_crash(self):
         with override_settings(ST_LOGO=str(Path(self.dir) / "missing.png")):
@@ -134,9 +140,12 @@ class ManifestTests(TestCase):
         self.addCleanup(__import__("shutil").rmtree, self.dir, ignore_errors=True)
         self.svg = Path(self.dir) / "crest.svg"
         self.svg.write_text('<svg xmlns="http://www.w3.org/2000/svg"/>')
-        # Deliberately not square, and wider than tall: a crest usually is.
         self.png = Path(self.dir) / "crest.png"
-        Image.new("RGBA", (300, 100), (10, 20, 30, 255)).save(self.png)
+        Image.new("RGBA", (512, 512), (10, 20, 30, 255)).save(self.png)
+        # A crest that is not square is refused nowhere -- it is fitted. The
+        # check of the same name is what tells its owner (D-33).
+        self.wide = Path(self.dir) / "wide.png"
+        Image.new("RGBA", (300, 100), (10, 20, 30, 255)).save(self.wide)
 
     def manifest(self):
         response = self.client.get(reverse("manifest"))
@@ -170,23 +179,29 @@ class ManifestTests(TestCase):
             response = self.client.get(manifest["icons"][0]["src"])
         self.assertEqual(response["Content-Type"], "image/png")
         with Image.open(io.BytesIO(response.content)) as icon:
-            # Square, whatever shape the crest was: a manifest that declares
-            # 192x192 and serves 300x100 declares something false.
             self.assertEqual(icon.size, (192, 192))
-            # Fitted and centred, never cropped -- the corners stay empty.
+
+    def test_a_crest_that_is_not_square_is_fitted_rather_than_cropped(self):
+        """The requirement is square (D-33) and `manage.py check` says so, but
+        a warning does not stop a service: what is served has to stay square
+        anyway, or the manifest declares 192x192 and hands over 300x100."""
+        with override_settings(ST_LOGO=str(self.wide)):
+            response = self.client.get("/icon/192.png")
+        with Image.open(io.BytesIO(response.content)) as icon:
+            self.assertEqual(icon.size, (192, 192))
+            # Centred on transparency: the corners stay empty, the middle does not.
             self.assertEqual(icon.getpixel((1, 1))[3], 0)
             self.assertEqual(icon.getpixel((96, 96))[3], 255)
 
-    def test_an_svg_crest_is_declared_once_at_any_size(self):
-        """No rasteriser here, so the file goes as it is -- which installs
-        everywhere but on iOS, and the apple-touch-icon is what says so."""
+    def test_an_svg_crest_is_no_crest_at_all(self):
+        """PNG only (D-33). An SVG is not half-supported, it is refused: iOS
+        reads none, and half-support is what leaves an empty square on the one
+        kind of phone this application is meant for."""
         with override_settings(ST_LOGO=str(self.svg)):
-            manifest = self.manifest()
+            self.assertEqual(self.manifest()["icons"], [])
+            self.assertEqual(self.client.get(reverse("logo")).status_code, 404)
             self.client.force_login(self.person)
             page = self.client.get(reverse("tickets:list")).content.decode()
-        self.assertEqual(manifest["icons"], [{
-            "src": "/logo", "sizes": "any", "type": "image/svg+xml",
-        }])
         self.assertNotIn("apple-touch-icon", page)
 
     def test_a_png_crest_reaches_ios_through_the_apple_link(self):
@@ -211,9 +226,6 @@ class ManifestTests(TestCase):
             self.assertEqual(self.client.get("/icon/9999.png").status_code, 404)
             self.assertEqual(self.client.get("/icon/64.png").status_code, 404)
 
-    def test_an_svg_crest_answers_no_png_icon(self):
-        with override_settings(ST_LOGO=str(self.svg)):
-            self.assertEqual(self.client.get("/icon/192.png").status_code, 404)
 
     def test_the_page_points_at_the_manifest_before_and_after_login(self):
         self.assertContains(
@@ -243,3 +255,60 @@ class ManifestTests(TestCase):
         # One tag, not three: the media-scoped pair would let the device
         # contradict the account on the one strip the account cannot see.
         self.assertEqual(page.count('name="theme-color"'), 1)
+
+
+class CrestCheckTests(TestCase):
+    """The requirement, said out loud at startup instead of never.
+
+    A crest that is not a square PNG is refused by `branding.logo_path`, and
+    the refusal is silent by nature: the header simply draws no crest and the
+    manifest declares no icon. This is what tells its owner why.
+    """
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.addCleanup(__import__("shutil").rmtree, self.dir, ignore_errors=True)
+
+    def warn(self, value):
+        with override_settings(ST_LOGO=value):
+            return [warning.id for warning in crest_is_a_square_png(None)]
+
+    def png(self, name, size):
+        path = Path(self.dir) / name
+        Image.new("RGBA", size, (10, 20, 30, 255)).save(path)
+        return str(path)
+
+    def test_no_crest_is_not_a_misconfiguration(self):
+        """Empty is the normal state of a fresh install (D-30)."""
+        self.assertEqual(self.warn(""), [])
+
+    def test_a_square_png_large_enough_says_nothing(self):
+        self.assertEqual(self.warn(self.png("crest.png", (512, 512))), [])
+
+    def test_an_svg_is_named_as_the_wrong_format(self):
+        path = Path(self.dir) / "crest.svg"
+        path.write_text('<svg xmlns="http://www.w3.org/2000/svg"/>')
+        self.assertEqual(self.warn(str(path)), ["school_tickets.W001"])
+
+    def test_a_path_that_is_not_there_is_named(self):
+        """The likeliest mistake of all: configured on the host, not mounted
+        into the container."""
+        self.assertEqual(
+            self.warn(str(Path(self.dir) / "missing.png")), ["school_tickets.W002"]
+        )
+
+    def test_a_png_suffix_is_not_a_png_file(self):
+        path = Path(self.dir) / "lie.png"
+        path.write_text("not an image")
+        self.assertEqual(self.warn(str(path)), ["school_tickets.W003"])
+
+    def test_a_crest_that_is_not_square_is_named_with_its_size(self):
+        with override_settings(ST_LOGO=self.png("wide.png", (300, 100))):
+            warnings = crest_is_a_square_png(None)
+        self.assertEqual(warnings[0].id, "school_tickets.W004")
+        self.assertIn("300x100", warnings[0].msg)
+
+    def test_a_crest_too_small_for_a_home_screen_is_named(self):
+        self.assertEqual(
+            self.warn(self.png("small.png", (128, 128))), ["school_tickets.W005"]
+        )
