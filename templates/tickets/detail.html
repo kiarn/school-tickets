@@ -285,6 +285,48 @@
         {% translate "What has already been tried" %}
     </h2>
 
+    {% comment %} The resolution rises to the top of the thread without leaving its
+       chronological place below (D-29): a ticket closed with nobody writing
+       down what worked is worth nothing to the next person, and that person
+       must not have to read twenty notes to find the one that mattered. When
+       the ticket is open again, the same note answers a different question --
+       what was tried last time -- so the heading changes and the note stays.
+       {% endcomment %}
+    {% if ticket.resolution_comment_id %}
+        <div class="alert alert-success alert-soft items-start mb-3">
+            <div class="min-w-0">
+                <p class="text-xs font-semibold uppercase tracking-wide">
+                    {% if ticket.status == "resolved" %}
+                        {% translate "What worked" %}
+                    {% else %}
+                        {% translate "What worked last time" %}
+                    {% endif %}
+                </p>
+                <p class="whitespace-pre-line break-words">
+                    {{ ticket.resolution_comment.body }}
+                </p>
+                <p class="text-xs opacity-70 mt-1">
+                    {% blocktranslate with who=ticket.resolution_comment.author %}
+                        noted by {{ who }}
+                    {% endblocktranslate %}
+                </p>
+            </div>
+        </div>
+    {% elif ticket.resolution_missing %}
+        {% comment %} The gap, shown rather than prevented. Closing never demands this
+           note (D-29) -- a required field teaches "ok", not a resolution, and
+           a duplicate or a false alarm has none to give. {% endcomment %}
+        <div class="alert alert-warning alert-soft mb-3 text-sm">
+            <span>
+                {% if can_work %}
+                    {% translate "Closed, but no note says what worked. Mark the one that does." %}
+                {% else %}
+                    {% translate "Closed, but no note says what worked." %}
+                {% endif %}
+            </span>
+        </div>
+    {% endif %}
+
     {% for comment in comments %}
         <div class="chat {% if comment.author_id == user.pk %}chat-end{% else %}chat-start{% endif %}">
             <div class="chat-header text-xs opacity-60 gap-1">
@@ -293,7 +335,7 @@
                     {{ comment.created_at|timesince }}
                 </time>
             </div>
-            <div class="chat-bubble whitespace-pre-line break-words">
+            <div class="chat-bubble whitespace-pre-line break-words {% if comment.pk == ticket.resolution_comment_id %}chat-bubble-success{% endif %}">
                 {{ comment.body }}
                 {% if comment.attachments.all %}
                     <div class="mt-2 w-48 max-w-full">
@@ -301,9 +343,33 @@
                     </div>
                 {% endif %}
             </div>
-            {% if comment.edited_at %}
-                <div class="chat-footer text-xs opacity-50">{% translate "edited" %}</div>
-            {% endif %}
+            <div class="chat-footer text-xs opacity-60 flex flex-wrap items-center gap-2">
+                {% comment %} The mark is offered on every note, and that is the proposal
+                   D-29 asks for: whoever repaired says which one it was, on the
+                   spot, without a form standing in the way. {% endcomment %}
+                {% if comment.pk == ticket.resolution_comment_id %}
+                    <span class="badge badge-success badge-xs">{% translate "Resolution" %}</span>
+                    {% if can_work %}
+                        <form method="post" action="{% url 'tickets:resolution' ticket.pk %}">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-ghost btn-xs">
+                                {% translate "Unmark" %}
+                            </button>
+                        </form>
+                    {% endif %}
+                {% elif can_work %}
+                    <form method="post" action="{% url 'tickets:resolution' ticket.pk %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="comment" value="{{ comment.pk }}">
+                        <button type="submit" class="btn btn-ghost btn-xs">
+                            {% translate "This is what worked" %}
+                        </button>
+                    </form>
+                {% endif %}
+                {% if comment.edited_at %}
+                    <span>{% translate "edited" %}</span>
+                {% endif %}
+            </div>
         </div>
     {% empty %}
         <p class="text-sm opacity-60 px-1">{% translate "No note yet." %}</p>

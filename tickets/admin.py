@@ -19,6 +19,11 @@ class TicketAdmin(admin.ModelAdmin):
     list_filter = ("status", "visibility", "priority", "school")
     search_fields = ("title", "description", "room_label")
     inlines = [AssigneeInline]
+    # Read-only rather than editable: the default widget for this key lists
+    # every comment of every ticket, so a superuser could hang a note from
+    # another thread at the top of this one -- something the application's own
+    # route cannot do. It is set where the repair is documented (D-29).
+    readonly_fields = ("resolution_comment",)
 
 
 @admin.register(Tag)

@@ -15,6 +15,7 @@ urlpatterns = [
     path("t/<int:pk>/claim/", views.ticket_claim, name="claim"),
     path("t/<int:pk>/assignees/", views.ticket_assignees, name="assignees"),
     path("t/<int:pk>/tags/", views.ticket_tags, name="tags"),
+    path("t/<int:pk>/resolution/", views.ticket_resolution, name="resolution"),
     path("t/<int:pk>/visibility/", views.ticket_visibility, name="visibility"),
     path("a/<int:pk>/", views.attachment, name="attachment"),
     path("a/<int:pk>/delete/", views.attachment_delete, name="attachment_delete"),

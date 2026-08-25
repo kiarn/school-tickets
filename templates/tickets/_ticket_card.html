@@ -35,6 +35,22 @@
             </p>
         {% endif %}
 
+        {% comment %} What worked, on the card itself. This is what hanging the mark on
+           the ticket buys (D-29): the line is drawn without reading a single
+           comment. Its absence on a closed ticket is drawn too -- the gap is
+           made visible rather than forbidden. {% endcomment %}
+        {% if ticket.status == "resolved" %}
+            {% if ticket.resolution_comment_id %}
+                <p class="text-xs opacity-70 border-s-2 border-success ps-2 line-clamp-2">
+                    {{ ticket.resolution_comment.body|truncatechars:160 }}
+                </p>
+            {% else %}
+                <p class="text-xs opacity-60 border-s-2 border-warning ps-2">
+                    {% translate "No note says what worked." %}
+                </p>
+            {% endif %}
+        {% endif %}
+
         <div class="flex flex-wrap items-center gap-1.5 text-xs">
             {% if ticket.priority == "high" %}
                 <span class="badge badge-error badge-sm">{{ ticket.get_priority_display }}</span>

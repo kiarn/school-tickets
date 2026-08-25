@@ -12,8 +12,10 @@ from pathlib import Path
 
 from django.core.exceptions import SuspiciousFileOperation, ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import connection
 from PIL import Image
 from django.test import TestCase, override_settings
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 from accounts.authz import (
@@ -1129,3 +1131,176 @@ class CommentAdminTests(TestCase):
         self.comment.refresh_from_db()
         self.assertEqual(self.comment.body, "vérifié une seconde fois")
         self.assertIsNotNone(self.comment.edited_at)
+
+
+class ResolutionTests(TestCase):
+    """The note that says what worked (D-29).
+
+    A ticket closed without anybody writing down what fixed it is worth nothing
+    to the next person, while the thread is the team's technical memory. The
+    mark makes the sentence get written -- and makes it findable without
+    re-reading twenty notes.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.school = School.objects.create(slug="lycee5", name="Lycee")
+        cls.room = Room.objects.create(school=cls.school, name="A102", sort_key="1-102")
+        cls.boss = User.objects.enroll(school=cls.school, cn="chef", role=Role.ADMIN)
+        cls.member = User.objects.enroll(school=cls.school, cn="mm", role=Role.MEMBER)
+        cls.reporter = User.objects.enroll(school=cls.school, cn="rr", role=Role.REPORTER)
+
+    def setUp(self):
+        self.ticket = Ticket.objects.create(
+            school=self.school, room=self.room, title="Kein Bild",
+            visibility=Visibility.ALL, created_by=self.reporter,
+        )
+        self.guess = Comment.objects.create(
+            ticket=self.ticket, author=self.member, body="Monitor getauscht, nichts."
+        )
+        self.fix = Comment.objects.create(
+            ticket=self.ticket, author=self.member, body="HDMI-Kabel war lose."
+        )
+
+    def mark(self, user, comment):
+        self.client.force_login(user)
+        data = {"comment": comment.pk} if comment is not None else {}
+        return self.client.post(
+            reverse("tickets:resolution", args=[self.ticket.pk]), data
+        )
+
+    def resolve(self):
+        self.ticket.status = Ticket.Status.RESOLVED
+        self.ticket.save(update_fields=["status"])
+
+    def test_the_repairer_names_the_note_that_worked(self):
+        self.mark(self.member, self.fix)
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.resolution_comment_id, self.fix.pk)
+
+    def test_marking_another_note_moves_the_mark_rather_than_adding_one(self):
+        """Unicity comes free from the foreign key: a flag on Comment would
+        have accepted two marked notes on the same ticket."""
+        self.mark(self.member, self.guess)
+        self.mark(self.member, self.fix)
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.resolution_comment_id, self.fix.pk)
+
+    def test_sending_nothing_takes_the_mark_off(self):
+        self.mark(self.member, self.fix)
+        self.mark(self.member, None)
+        self.ticket.refresh_from_db()
+        self.assertIsNone(self.ticket.resolution_comment_id)
+
+    def test_a_note_from_another_thread_is_refused(self):
+        """The lookup is scoped to this ticket's own comments: an identifier
+        from elsewhere would hang a stranger's note at the top of this page."""
+        other = Ticket.objects.create(
+            school=self.school, room=self.room, title="Drucker",
+            visibility=Visibility.ADMINS, created_by=self.boss,
+        )
+        elsewhere = Comment.objects.create(
+            ticket=other, author=self.boss, body="Toner gewechselt."
+        )
+        self.assertEqual(self.mark(self.member, elsewhere).status_code, 404)
+        self.ticket.refresh_from_db()
+        self.assertIsNone(self.ticket.resolution_comment_id)
+
+    def test_reporting_is_not_repairing(self):
+        """Same rule as `status` and `tags`, on one's own ticket included."""
+        self.assertEqual(self.mark(self.reporter, self.fix).status_code, 404)
+        self.ticket.refresh_from_db()
+        self.assertIsNone(self.ticket.resolution_comment_id)
+
+    def test_a_ticket_one_may_not_read_is_a_404_not_a_403(self):
+        self.ticket.visibility = Visibility.ADMINS
+        self.ticket.save(update_fields=["visibility"])
+        self.assertEqual(self.mark(self.member, self.fix).status_code, 404)
+
+    def test_the_route_answers_no_get(self):
+        self.client.force_login(self.member)
+        response = self.client.get(reverse("tickets:resolution", args=[self.ticket.pk]))
+        self.assertEqual(response.status_code, 405)
+
+    def test_closing_never_demands_a_resolution(self):
+        """D-29, taken by the other end: a required field would teach "ok",
+        and would block the tickets that legitimately have none."""
+        self.client.force_login(self.member)
+        response = self.client.post(
+            reverse("tickets:status", args=[self.ticket.pk]), {"status": "resolved"}
+        )
+        self.assertEqual(response.status_code, 302)
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.status, Ticket.Status.RESOLVED)
+        self.assertTrue(self.ticket.resolution_missing)
+
+    def test_the_gap_is_shown_on_the_page_and_in_the_list(self):
+        self.resolve()
+        self.client.force_login(self.member)
+        self.assertContains(
+            self.client.get(reverse("tickets:detail", args=[self.ticket.pk])),
+            "no note says what worked",
+            status_code=200,
+        )
+        self.assertContains(
+            self.client.get(reverse("tickets:list") + "?closed=1"),
+            "No note says what worked.",
+        )
+
+    def test_the_resolution_rises_to_the_top_of_the_thread(self):
+        self.mark(self.member, self.fix)
+        self.resolve()
+        response = self.client.get(reverse("tickets:detail", args=[self.ticket.pk]))
+        page = response.content.decode()
+        self.assertIn("What worked", page)
+        # And keeps its chronological place below: twice on the page, not once.
+        self.assertEqual(page.count("HDMI-Kabel war lose."), 2)
+
+    def test_the_card_shows_it_without_reading_the_thread(self):
+        """What the foreign key on the ticket buys: drawing the resolution on
+        every card costs not one query more than not drawing it."""
+        self.resolve()
+        self.client.force_login(self.member)
+        with CaptureQueriesContext(connection) as plain:
+            self.client.get(reverse("tickets:list") + "?closed=1")
+        self.mark(self.member, self.fix)
+        with CaptureQueriesContext(connection) as marked:
+            response = self.client.get(reverse("tickets:list") + "?closed=1")
+        self.assertEqual(len(marked), len(plain))
+        self.assertContains(response, "HDMI-Kabel war lose.")
+
+    def test_the_mark_survives_a_reopening(self):
+        """A fault that starts again does not make the note untrue: it makes it
+        the first thing the next person should read. ``resolved_by`` answers a
+        question a reopened ticket no longer has; this one does not."""
+        self.mark(self.member, self.fix)
+        self.resolve()
+        self.client.force_login(self.reporter)
+        self.client.post(
+            reverse("tickets:status", args=[self.ticket.pk]), {"status": "open"}
+        )
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.status, Ticket.Status.OPEN)
+        self.assertIsNone(self.ticket.resolved_by_id)
+        self.assertEqual(self.ticket.resolution_comment_id, self.fix.pk)
+        # And it is presented as what worked *last time*, the ticket being open.
+        response = self.client.get(reverse("tickets:detail", args=[self.ticket.pk]))
+        self.assertContains(response, "What worked last time")
+
+    def test_a_deleted_note_does_not_take_the_ticket_with_it(self):
+        self.mark(self.member, self.fix)
+        self.fix.delete()
+        self.ticket.refresh_from_db()
+        self.assertIsNone(self.ticket.resolution_comment_id)
+
+    def test_the_buttons_are_drawn_for_the_team_and_for_nobody_else(self):
+        self.client.force_login(self.member)
+        self.assertContains(
+            self.client.get(reverse("tickets:detail", args=[self.ticket.pk])),
+            "This is what worked",
+        )
+        self.client.force_login(self.reporter)
+        self.assertNotContains(
+            self.client.get(reverse("tickets:detail", args=[self.ticket.pk])),
+            "This is what worked",
+        )

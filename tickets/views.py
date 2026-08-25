@@ -86,7 +86,10 @@ def ticket_list(request):
 
     tickets = (
         Ticket.objects.visible_to(request.user)
-        .select_related("room", "created_by")
+        # ``resolution_comment`` joined here rather than read per card: the
+        # whole point of hanging the mark on the ticket (D-29) is that the list
+        # shows what worked without loading anybody's thread.
+        .select_related("room", "created_by", "resolution_comment")
         .prefetch_related("tags")
     )
 
@@ -175,7 +178,10 @@ def ticket_list(request):
 @login_required
 def ticket_detail(request, pk):
     ticket = get_object_or_404(
-        Ticket.objects.visible_to(request.user).select_related("room", "device"), pk=pk
+        Ticket.objects.visible_to(request.user).select_related(
+            "room", "device", "resolution_comment", "resolution_comment__author"
+        ),
+        pk=pk,
     )
     assignees = list(ticket.assignees.all())
     # One choice means nothing to choose: the block stays a plain statement of
@@ -421,6 +427,53 @@ def ticket_tags(request, pk):
                 [TicketTag(ticket=ticket, tag=tag) for tag in wanted - current]
             )
         messages.success(request, _("Tags updated."))
+    return redirect("tickets:detail", pk=ticket.pk)
+
+
+@require_POST
+@login_required
+def ticket_resolution(request, pk):
+    """Point at the note that says what actually worked, or take the mark off.
+
+    The teaching point comes first here: a ticket closed without anybody
+    writing down *what worked* is worth nothing to the next person, while the
+    thread is precisely "the team's technical memory". Marking one note forces
+    the sentence to be written, and makes it findable without re-reading twenty
+    others.
+
+    ``can_work_on``, for the reason that decides ``status`` and ``tags``: what
+    is being named is the repair, and reporting is not repairing.
+
+    **The mark survives a reopening**, deliberately. A fault that starts again
+    does not make the note untrue; it makes it the first thing to read, at the
+    exact moment somebody needs to know what has already been tried. The
+    ticket's own ``resolved_by`` and ``resolved_at`` are cleared on reopening
+    because they answer "who closed this, when" -- a question a reopened ticket
+    no longer has. "What worked last time" is a different question, and it
+    keeps its answer.
+
+    Neither audited nor notified, like ``ticket_tags`` and for the same reason:
+    this changes how a ticket is documented, not who may read it.
+    """
+    ticket = _ticket_or_404(request, pk)
+    if not can_work_on(request.user):
+        raise Http404
+
+    wanted = request.POST.get("comment") or ""
+    if wanted.isdigit():
+        # Looked up inside this ticket's own thread, never in Comment at large:
+        # an identifier from elsewhere would otherwise hang a stranger's note
+        # -- possibly from a ticket this reader may not even open -- at the top
+        # of this page.
+        ticket.resolution_comment = get_object_or_404(ticket.comments, pk=wanted)
+        messages.success(request, _("Marked as what worked."))
+    elif wanted:
+        # Not a number, so not an identifier: 404 rather than a silent unmark.
+        raise Http404
+    else:
+        ticket.resolution_comment = None
+        messages.success(request, _("Resolution mark removed."))
+    ticket.save(update_fields=["resolution_comment", "updated_at"])
     return redirect("tickets:detail", pk=ticket.pk)
 
 

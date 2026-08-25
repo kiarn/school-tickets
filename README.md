@@ -65,7 +65,7 @@ nothing and provisions nobody, it only checks that an already-enrolled person
 is who they say they are.
 
 ```sh
-.venv/bin/python manage.py test              # 153 tests, visibility among them
+.venv/bin/python manage.py test              # 244 tests, visibility among them
 .venv/bin/python manage.py run_worker --once # one pass of every due job
 .venv/bin/python manage.py vapid_keys        # Web Push keys, once per install
 ```
@@ -87,7 +87,7 @@ belongs in; it writes nothing, because guessing would undo the separation.
 The separation rests on two environment files with different permissions, not
 on the discipline of the code. Units live in [`debian/`](debian/).
 
-## Six rules worth knowing before touching the code
+## Seven rules worth knowing before touching the code
 
 **Every ticket read goes through `Ticket.objects.visible_to(user)`.** Never the
 bare queryset. The authorisation scale lives in `accounts/authz.py`; a ticket
@@ -124,6 +124,16 @@ enrolment: the login backend creates no account and provisions nobody. Every
 failure -- unknown login, wrong password, deactivated or anonymised account --
 answers with the same sentence, because two different messages would turn the
 form into a way of asking who is enrolled.
+
+**A resolution is offered, never required** (D-29). `Ticket.resolution_comment`
+points at the note in the thread that says what actually worked, and nothing
+enforces it: a mandatory field teaches people to type "ok" rather than to write
+a resolution, and a duplicate or a false alarm has none to give. What replaces
+the constraint is the gap being *visible* -- a resolved ticket with no note
+marked says so on its page and on its card in the list. The mark also survives
+a reopening, where `resolved_by` and `resolved_at` are cleared: "who closed
+this" is a question a reopened ticket no longer has, "what worked last time" is
+the one its next reader starts from.
 
 **The worker holds the only lmnapi secret.** `parc/lmnapi.py` reads it from the
 process environment, never from Django settings, so the web service can share
@@ -199,16 +209,16 @@ be written honestly before somebody has read a real response from either system
   so certificates come first. Waiting on the lmnapi endpoint, whose semantics
   are Q-08 -- sophomorix moves leavers rather than deleting them, so "this `cn`
   exists" and "this person is still here" are not the same question.
-- **A comment marked as the resolution.** Nothing carries one today: a
-  `Comment` has a body and an author, a `Ticket` has `resolved_by` and
-  `resolved_at`, and the two are not tied together. Closing a ticket therefore
-  costs nothing and teaches nothing, and the next person to meet the same fault
-  reads twenty notes to find what worked. The mark will hang off the ticket, as
-  a `resolution_comment` beside `resolved_by`, and resolving will **offer** it
-  without ever requiring it: a mandatory field teaches people to type "ok", and
-  some tickets legitimately have no resolution to write -- a duplicate, a false
-  alarm, a machine replaced. Showing the gap is the lever, not blocking the
-  form (D-12).
+- **A starter set of tags and badges.** A fresh install has no vocabulary at
+  all: the tag dialog opens on "No tag exists yet for this school", and the
+  badge catalogue is empty -- the five catalogue badges only ever existed in
+  the demo seed, which is not part of this repository. Both are configurable by
+  design, so what is missing is not a mechanism but a **default proposal**: a
+  handful of tags for the faults that recur, and a catalogue an administrator
+  prunes, renames or ignores. The split of D-15 decides how each half is
+  shipped -- catalogue badges are `msgid` that travel with the code and are
+  translated, while a tag is a school's own vocabulary and is never translated,
+  so the two cannot be seeded by the same mechanism.
 - **Empty translation catalogues.** `locale/` holds no `.po` at all, so the
   five catalogue badges shipped with the demo run their names through
   `gettext()` and come back in English, next to a school badge in German.

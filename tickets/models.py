@@ -85,6 +85,19 @@ class Ticket(models.Model):
         related_name="tickets_resolved",
     )
     resolved_at = models.DateTimeField(null=True, blank=True)
+    # The note that says what actually worked (D-29). A foreign key on the
+    # ticket rather than a flag on Comment: a ticket has one resolution or
+    # none, which the key says by itself, and the list can draw it without
+    # reading a single comment. SET_NULL because a deleted note must not take
+    # the ticket with it.
+    resolution_comment = models.ForeignKey(
+        "Comment",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name=_("Resolution"),
+    )
     # A reopened ticket signals an incomplete retest. Material for a
     # conversation with the pupil, never for a sanction, never shown publicly.
     reopened_count = models.PositiveIntegerField(default=0)
@@ -105,6 +118,18 @@ class Ticket(models.Model):
         if not self.room_label and self.room_id:
             self.room_label = self.room.name
         super().save(*args, **kwargs)
+
+    @property
+    def resolution_missing(self) -> bool:
+        """Closed with nothing written down about what worked.
+
+        Shown, never prevented (D-29). A required field would not teach anyone
+        to write a resolution, it would teach them to type "ok"; and it would
+        block the tickets that legitimately have none -- a duplicate, a false
+        alarm, a machine replaced. So the gap is drawn on the page and in the
+        list, and the form still closes.
+        """
+        return self.status == self.Status.RESOLVED and self.resolution_comment_id is None
 
 
 class TicketAssignee(models.Model):
