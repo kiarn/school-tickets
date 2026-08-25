@@ -138,6 +138,9 @@ ST_SITE_NAME = os.environ.get("ST_SITE_NAME", "school-tickets")
 # Absolute path to an SVG or PNG. Empty means the name stands alone, which is
 # what a fresh install looks like.
 ST_LOGO = os.environ.get("ST_LOGO", "")
+# What fits under an icon on a home screen. Falls back to the full name, which
+# the phone then elides itself -- a truncation we would do worse.
+ST_SITE_SHORT_NAME = os.environ.get("ST_SITE_SHORT_NAME", "") or ST_SITE_NAME
 
 # --- Worker (D-20) -----------------------------------------------------------
 # Cadences in seconds. Deferred as configurable: see specs/01-decisions.md.

@@ -65,7 +65,7 @@ nothing and provisions nobody, it only checks that an already-enrolled person
 is who they say they are.
 
 ```sh
-.venv/bin/python manage.py test              # 244 tests, visibility among them
+.venv/bin/python manage.py test              # 256 tests, visibility among them
 .venv/bin/python manage.py run_worker --once # one pass of every due job
 .venv/bin/python manage.py vapid_keys        # Web Push keys, once per install
 ```
@@ -223,11 +223,13 @@ be written honestly before somebody has read a real response from either system
   five catalogue badges shipped with the demo run their names through
   `gettext()` and come back in English, next to a school badge in German.
   Nothing is broken; nothing is translated either (D-15).
-- **A web app manifest.** The application is a PWA (D-14) and has a service
-  worker, so Push works -- but with no manifest it cannot be installed to a
-  home screen. `ST_LOGO` now gives it the icon it was missing; what remains is
-  the manifest itself, which wants icon sizes rather than one file, plus
-  `name`, `start_url` and `display`.
+- **An automatic install prompt, and anything offline.** The manifest is there
+  (D-33), so the application installs to a home screen -- but `sw.js` has no
+  `fetch` handler, deliberately: no caching, no offline shell (doc 09). Chrome
+  has made that handler a condition of *offering* the installation by itself,
+  so the prompt may not appear and the phone's "add to home screen" menu is
+  what installs it. Whether to add a handler, and how much of the application
+  should work with no network, is Q-09 and is not settled.
 
 ## Licence
 
