@@ -22,8 +22,8 @@ from accounts.authz import (
     VISIBILITY_HELP,
     Role,
     Visibility,
-    can_restrict_to,
     can_widen,
+    visibility_targets,
 )
 from accounts.models import AuditLog, School, User
 from parc.models import Device, Room
@@ -168,10 +168,28 @@ class AsymmetryTests(TestCase):
         self.assertFalse(can_widen(self.member))
         self.assertTrue(can_widen(self.admin))
 
-    def test_restricting_never_below_ones_own_level(self):
-        self.assertTrue(can_restrict_to(self.member, Visibility.TEAM))
-        self.assertFalse(can_restrict_to(self.member, Visibility.ADMINS))
-        self.assertTrue(can_restrict_to(self.admin, Visibility.ADMINS))
+    def test_only_the_author_and_the_admins_may_move_a_level(self):
+        """D-41 narrowed this: reading a ticket is not being responsible for it.
+
+        Any reader used to be able to restrict any ticket, which made a
+        stranger's report vanish from the team's list with nothing said.
+        """
+        author = User.objects.enroll(school=self.school, cn="teacher", role=Role.REPORTER)
+        room = Room.objects.create(school=self.school, name="204")
+        ticket = Ticket.objects.create(
+            school=self.school, room=room, room_label="204", title="Damage",
+            visibility=Visibility.TEAM, created_by=author,
+        )
+        # The author restricts, and down to admins-only: the author clause of
+        # visible_to() keeps it in front of them whatever floor they pick.
+        self.assertEqual(
+            [value for value, _ in visibility_targets(author, ticket)],
+            [Visibility.ADMINS, Visibility.TEAM],
+        )
+        # An admin moves it either way.
+        self.assertEqual(len(visibility_targets(self.admin, ticket)), 3)
+        # Anybody else, on somebody else's ticket: nothing to offer.
+        self.assertEqual(visibility_targets(self.member, ticket), [])
 
 
 class EnrolmentTests(TestCase):
@@ -287,21 +305,31 @@ class ScreenTests(TestCase):
         self.assertIn("badge badge-warning", page)
         self.assertNotIn("badge badge-error", page)
 
-    def test_a_normal_priority_is_drawn_nowhere(self):
-        """It is the default, so it says nothing worth a line of screen -- and a
-        chip that comes and goes from one ticket to the next was half of what
-        made the page hard to read (D-36)."""
-        self.ticket.priority = Ticket.Priority.NORMAL
-        self.ticket.save(update_fields=["priority"])
-        for url in (reverse("tickets:list"), reverse("tickets:detail", args=[self.ticket.pk])):
-            with self.subTest(url=url):
-                page = self.client.get(url).content.decode()
-                # The flag is the priority, and nothing else on either page
-                # uses it. "Normal" does still appear inside the correction
-                # picker (D-37), where it is the current value rather than an
-                # announcement -- which is why this looks for the mark and not
-                # for the word.
-                self.assertNotIn("⚑", page)
+    def test_both_screens_mark_every_priority_including_normal(self):
+        """The flag stands left of the room and the title, on the list and on
+        the ticket alike (D-39, extended to the ticket the same day).
+
+        All four levels are drawn, "normal" included. What made the default
+        worth hiding was a chip that came and went; a mark always in the same
+        place is read as a scale instead, and that is what took the priority out
+        of the row it shared with the tags.
+
+        The flag is a colour, so the level has to reach a screen reader some
+        other way: the accessible name is what this asserts, never the class.
+        """
+        screens = (reverse("tickets:list"), reverse("tickets:detail", args=[self.ticket.pk]))
+        for level, name in (
+            (Ticket.Priority.NORMAL, "Normal priority"),
+            (Ticket.Priority.LOW, "Low priority"),
+            (Ticket.Priority.HIGH, "High priority"),
+            (Ticket.Priority.URGENT, "Urgent"),
+        ):
+            self.ticket.priority = level
+            self.ticket.save(update_fields=["priority"])
+            for url in screens:
+                with self.subTest(priority=level, url=url):
+                    page = self.client.get(url).content.decode()
+                    self.assertIn(f'title="{name}"', page)
 
     def test_the_reader_is_told_who_else_can_see_this(self):
         """Visibility is never implicit on screen (doc 08)."""
@@ -623,6 +651,33 @@ class WriteTests(TestCase):
         ticket.refresh_from_db()
         self.assertEqual(ticket.priority, Ticket.Priority.URGENT)
 
+    def test_the_description_can_be_rewritten_and_says_that_it_was(self):
+        """D-42 reversed D-37 on this one: a description dictated in a corridor
+        is often wrong, and leaving the wrong words at the top of the page for
+        good was the worse half of the trade. The cost is recorded rather than
+        prevented -- the thread may be answering a sentence that has changed."""
+        ticket = self.open_ticket(description="Screen off.")
+        self.client.force_login(self.member)
+        self.post("tickets:correct", ticket, {
+            "room": self.room.pk, "priority": Ticket.Priority.NORMAL,
+            "description": "Screen off, and the cable is missing.",
+        })
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.description, "Screen off, and the cable is missing.")
+        self.assertIsNotNone(ticket.description_edited_at)
+
+    def test_a_correction_that_leaves_the_words_alone_leaves_no_mark(self):
+        """Moving a ticket to the right room is not an edit of what was written."""
+        ticket = self.open_ticket(description="Screen off.")
+        self.client.force_login(self.member)
+        self.post("tickets:correct", ticket, {
+            "room": self.other_room.pk, "priority": Ticket.Priority.NORMAL,
+            "description": "Screen off.",
+        })
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.room, self.other_room)
+        self.assertIsNone(ticket.description_edited_at)
+
     def test_a_reader_who_neither_repairs_nor_reported_may_not_correct(self):
         ticket = self.open_ticket(visibility=Visibility.ALL)
         self.client.force_login(self.reporter)
@@ -816,6 +871,35 @@ class WriteTests(TestCase):
         self.assertContains(response, reverse("tickets:visibility", args=[ticket.pk]))
         # ...but never the picker that grants access to somebody else.
         self.assertNotContains(response, reverse("tickets:assignees", args=[ticket.pk]))
+
+    def test_a_reader_is_told_the_level_even_when_they_may_not_move_it(self):
+        """The half of doc 08 that D-41 did **not** narrow.
+
+        Whoever writes in a thread has to know who will read them, so the value
+        is drawn for everybody. What narrowed is the control: on somebody
+        else's ticket, a member is now offered nothing -- until D-41 any reader
+        could restrict any ticket, and a stranger's report would vanish from
+        the team's list with nothing said.
+        """
+        ticket = self.open_ticket(created_by=self.admin, visibility=Visibility.ALL)
+        self.client.force_login(self.other_member)
+        response = self.client.get(reverse("tickets:detail", args=[ticket.pk]))
+        self.assertContains(response, "Visibility")
+        self.assertContains(response, str(Visibility.ALL.label))
+        self.assertNotContains(response, reverse("tickets:visibility", args=[ticket.pk]))
+
+    def test_the_status_menu_offers_only_the_moves_that_are_legal(self):
+        """D-38: the chip is the menu, and it lists moves, not states. From a
+        resolved ticket the only move is back out of it -- offering "resolved"
+        again would be a menu entry that does nothing."""
+        ticket = self.open_ticket(status=Ticket.Status.RESOLVED)
+        self.client.force_login(self.member)
+        page = self.client.get(reverse("tickets:detail", args=[ticket.pk])).content.decode()
+        self.assertIn('name="status" value="open"', page)
+        self.assertNotIn('name="status" value="resolved"', page)
+        self.assertNotIn('name="status" value="in_progress"', page)
+        # The wording is the teaching, and it survives the move to a menu.
+        self.assertIn("Reopen: not fixed", page)
 
     def test_a_reporter_sees_no_control_they_may_not_use(self):
         """A button that answers "you may not" is a button that should not be drawn."""

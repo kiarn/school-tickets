@@ -128,7 +128,7 @@
        that visibility never be implicit, and this is the line that keeps it
        said even when nobody opens the block. {% endcomment %}
     <p class="text-xs opacity-70 px-1">
-        <strong>{% translate "Visibility" %}:</strong> {{ form.visibility_summary }}
+        {% blocktranslate with level=form.visibility_summary %}Visibility: {{ level }}{% endblocktranslate %}
     </p>
 
     <button type="submit" class="btn btn-primary w-full">{% translate "Open the ticket" %}</button>

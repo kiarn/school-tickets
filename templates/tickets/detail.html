@@ -15,69 +15,181 @@
         {% comment %} Status, priority and tags used to share one row of chips, three
            vocabularies drawn with the same object: a tag coloured `error` read as
            "High", a tag coloured `warning` read as "Open" (D-36). Each has its own
-           place now -- the state beside the title, the judgement in the meta line
-           under it, the filing on its own row at the foot of the card. {% endcomment %}
+           place now -- the priority as a flag in the left margin (D-39), the state
+           and the audience stacked in the top right corner (D-41, D-42), the
+           filing on its own row at the foot of the card. {% endcomment %}
+        {% if ticket.priority == "urgent" %}{% translate "Urgent" as priority_name %}
+        {% elif ticket.priority == "high" %}{% translate "High priority" as priority_name %}
+        {% elif ticket.priority == "low" %}{% translate "Low priority" as priority_name %}
+        {% else %}{% translate "Normal priority" as priority_name %}{% endif %}
+
         <div class="flex items-start justify-between gap-3">
-            <div class="min-w-0">
-                <p class="text-xs uppercase tracking-wide opacity-60">{{ ticket.room_label }}</p>
-                <h1 class="text-xl font-semibold leading-snug break-words">{{ ticket.title }}</h1>
+            {% comment %} The same flag as the list (D-39), at the size of this page's two
+               lines. It is drawn for all four levels here too: what made "normal"
+               worth hiding was a chip that came and went, and a mark that is
+               always in the same place is read as a scale instead. The tint has
+               to stay literal in the markup -- Tailwind's scanner reads
+               `templates/` and nothing else (D-18). {% endcomment %}
+            <div class="flex items-center shrink-0" title="{{ priority_name }}">
+                <span aria-hidden="true" class="text-4xl leading-none
+                        {% if ticket.priority == 'urgent' %}text-error
+                        {% elif ticket.priority == 'high' %}text-warning
+                        {% elif ticket.priority == 'low' %}opacity-20
+                        {% else %}opacity-35{% endif %}">⚑</span>
+                <span class="sr-only">{{ priority_name }}</span>
             </div>
-            <span class="badge {{ ticket.status_class }} shrink-0">
-                {{ ticket.get_status_display }}
-            </span>
-        </div>
 
-        {% comment %} What is said *about* the ticket, as words rather than chips: the colour
-           of a chip now means the state and nothing else. "Normal" is drawn
-           nowhere -- it is the default, and a chip that comes and goes from one
-           ticket to the next is half of what made this page hard to read.
-
-           Visibility is never implicit (doc 08, D-21), so the value stays written
-           out for every reader; only the means to change it is a control, and it
-           is the modal the tags and the assignees already use. Widening publishes
-           the whole thread retroactively, so that warning belongs where the
-           decision is taken, not in a box beside it. {% endcomment %}
-        <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-            {% comment %} Four levels since D-37, and the top two are the ones that carry a
-               colour: "Urgent" is the loudest thing on the page after the state,
-               "High" a step below, "Low" a grey aside. {% endcomment %}
-            {% if ticket.priority == "urgent" %}
-                <span class="text-error font-semibold">
-                    <span aria-hidden="true">⚑</span> {% translate "Urgent" %}
-                </span>
-            {% elif ticket.priority == "high" %}
-                <span class="text-warning font-medium">
-                    <span aria-hidden="true">⚑</span> {% translate "High priority" %}
-                </span>
-            {% elif ticket.priority == "low" %}
-                <span class="opacity-60">
-                    <span aria-hidden="true">⚑</span> {% translate "Low priority" %}
+            <div class="min-w-0 flex-1">
+                <p class="text-xs uppercase tracking-wide opacity-60">{{ ticket.room_label }}</p>
+                <h1 class="text-xl font-semibold leading-snug break-words">
+                    {{ ticket.title }}
+                    {% comment %} Beside what it corrects (D-41). It reads as an afterthought
+                       because it is one: correcting the room is rare, and the
+                       word it used to spend on the meta line is now spent on
+                       the visibility, which every reader has to see.
+                       {% endcomment %}
+                    {% if correction_form %}
+                        <button type="button" class="btn btn-ghost btn-xs btn-circle align-middle"
+                                onclick="correct_modal.showModal()"
+                                aria-label="{% translate 'Correct' %}"
+                                title="{% translate 'Correct' %}">
+                            <span aria-hidden="true">✎</span>
+                        </button>
+                    {% endif %}
+                </h1>
+            </div>
+            {% comment %} The state is read and changed in the same place (D-38): the chip is
+               the menu. What the menu lists are **moves, not states** -- "Retested,
+               resolved" rather than "Resolved" -- because the wording is the
+               teaching (doc 00, D-29): a pupil closes their own ticket, and what
+               the button asks for is the full retest. A plain <select> of the four
+               statuses would have thrown that away and offered moves nobody may
+               make. Only the legal ones are drawn; when there is none, the chip is
+               a chip again. {% endcomment %}
+            {% comment %} The state and the audience share the top right corner (D-42), stacked
+               rather than spread over a line of their own: one control per line
+               left a card mostly empty. `shrink-0` here and `min-w-0` on the
+               title mean a long title wraps instead of pushing these off. {% endcomment %}
+            <div class="flex flex-col items-end gap-1 shrink-0">
+            {% if can_work or can_reopen %}
+                <div class="dropdown dropdown-end">
+                    <div tabindex="0" role="button"
+                         class="badge {{ ticket.status_class }} gap-1 cursor-pointer">
+                        {{ ticket.get_status_display }}
+                        <span aria-hidden="true" class="text-[0.7em]">▼</span>
+                    </div>
+                    <ul tabindex="0"
+                        class="dropdown-content menu menu-sm bg-base-100 rounded-box z-40 mt-1 w-56 p-2 shadow">
+                        {% if ticket.status == "resolved" or ticket.status == "cancelled" %}
+                            <li>
+                                <button type="submit" form="status-form"
+                                        name="status" value="open" class="text-warning">
+                                    {% translate "Reopen: not fixed" %}
+                                </button>
+                            </li>
+                        {% else %}
+                            {% if can_work and ticket.status != "in_progress" %}
+                                <li>
+                                    <button type="submit" form="status-form"
+                                            name="status" value="in_progress">
+                                        {% translate "In progress" %}
+                                    </button>
+                                </li>
+                            {% endif %}
+                            {% if can_work %}
+                                <li>
+                                    <button type="submit" form="status-form"
+                                            name="status" value="resolved" class="text-success">
+                                        {% translate "Retested, resolved" %}
+                                    </button>
+                                </li>
+                            {% endif %}
+                            <li>
+                                <button type="submit" form="status-form"
+                                        name="status" value="cancelled" class="opacity-70">
+                                    {% translate "Cancel this ticket" %}
+                                </button>
+                            </li>
+                        {% endif %}
+                    </ul>
+                </div>
+            {% else %}
+                <span class="badge {{ ticket.status_class }}">
+                    {{ ticket.get_status_display }}
                 </span>
             {% endif %}
 
-            <span class="opacity-70">
-                <strong>{% translate "Visibility" %}:</strong>
-                {{ ticket.get_visibility_display }}
-            </span>
+            {% comment %} Never implicit, and never only for those who may change it (doc 08,
+               D-21): whoever writes in this thread has to know who will read
+               them. So the value is always drawn, for everybody -- what D-41
+               narrowed is the *control*, which now opens only for an admin or
+               for the author restricting their own report.
+
+               The trigger shows the eye and the level, not the whole sentence:
+               it shares its line with the state, and a long title has to keep
+               its width (D-42). The word itself is one line down, in the menu
+               heading, and in the accessible name.
+
+               The sentence under each level is part of the rule and not a
+               tooltip: "everyone" has to say out loud that it does not mean the
+               public. {% endcomment %}
             {% if visibility_choices|length > 1 %}
-                <button type="button" class="btn btn-ghost btn-xs"
-                        onclick="visibility_modal.showModal()">{% translate "Change" %}</button>
+                <div class="dropdown dropdown-end">
+                    <div tabindex="0" role="button" class="btn btn-ghost btn-xs gap-1 font-normal"
+                         {% comment %} The colon travels *inside* the string: French wants a space
+                            before it, German wants none, and a colon hard-coded in
+                            the markup gives every language the English rule.
+                            {% endcomment %}
+                         title="{% blocktranslate with level=ticket.get_visibility_display %}Visibility: {{ level }}{% endblocktranslate %}">
+                        <span aria-hidden="true">👁</span>
+                        <span class="sr-only">{% translate "Visibility" %}:</span>
+                        {{ ticket.get_visibility_display }}
+                        <span aria-hidden="true" class="text-[0.7em]">▼</span>
+                    </div>
+                    <ul tabindex="0"
+                        class="dropdown-content menu menu-sm bg-base-100 rounded-box z-40 mt-1 w-72 p-2 shadow">
+                        <li class="menu-title">{% translate "Visibility" %}</li>
+                        {% for value, label, meaning in visibility_choices %}
+                            <li>
+                                <button type="submit" form="visibility-form"
+                                        name="visibility" value="{{ value }}"
+                                        class="flex-col items-start gap-0
+                                               {% if value == ticket.visibility %}menu-active{% endif %}">
+                                    <span class="font-medium">{{ label }}</span>
+                                    <span class="text-xs opacity-70 whitespace-normal">
+                                        {{ meaning }}
+                                    </span>
+                                </button>
+                            </li>
+                        {% endfor %}
+                        {% if can_widen %}
+                            <li class="menu-title text-xs whitespace-normal">
+                                {% translate "Widening publishes every comment and photo already in this thread." %}
+                            </li>
+                        {% endif %}
+                    </ul>
+                </div>
+            {% else %}
+                <span class="text-xs opacity-70 whitespace-nowrap">
+                    <span aria-hidden="true">👁</span>
+                    <span class="sr-only">{% translate "Visibility" %}:</span>
+                    {{ ticket.get_visibility_display }}
+                </span>
             {% endif %}
-
-            {% comment %} One control for the three facts that get mistyped in a hurry --
-               room, machine, urgency (D-37) -- rather than three scattered
-               pencils. Pushed to the end of the line: it is a repair of the
-               ticket, not a reading of it. {% endcomment %}
-            {% if correction_form %}
-                <button type="button" class="btn btn-ghost btn-xs ms-auto"
-                        onclick="correct_modal.showModal()">
-                    <span aria-hidden="true">✎</span> {% translate "Correct" %}
-                </button>
-            {% endif %}
+            </div>
         </div>
 
+        {% comment %} A step larger than the rest of the card: it is the one paragraph
+           somebody reads standing in a corridor, and D-42 is where that was
+           said. The mark below it is the price of letting it be rewritten --
+           the thread may be answering a sentence that has changed. {% endcomment %}
         {% if ticket.description %}
-            <p class="whitespace-pre-line break-words">{{ ticket.description }}</p>
+            <p class="text-base leading-relaxed whitespace-pre-line break-words">
+                {{ ticket.description }}
+            </p>
+            {% if ticket.description_edited_at %}
+                <p class="text-xs opacity-60 -mt-2">{% translate "edited" %}</p>
+            {% endif %}
         {% endif %}
 
         {% if ticket.device %}
@@ -246,7 +358,7 @@
         <div class="modal-box">
             <h3 class="font-semibold mb-1">{% translate "Correct this ticket" %}</h3>
             <p class="text-sm opacity-60 mb-3">
-                {% translate "Where the fault is, and how much it can wait." %}
+                {% translate "Where the fault is, what it says, and how much it can wait." %}
             </p>
             <form method="post" action="{% url 'tickets:correct' ticket.pk %}"
                   class="flex flex-col gap-3">
@@ -269,6 +381,14 @@
                     </label>
                     {{ correction_form.priority }}
                 </div>
+                {% comment %} The description, rewritable since D-42. The title is not: it is
+                   what the list is scanned by. {% endcomment %}
+                <div>
+                    <label class="label" for="{{ correction_form.description.id_for_label }}">
+                        {% translate "Description" %}
+                    </label>
+                    {{ correction_form.description }}
+                </div>
                 <div class="modal-action">
                     <button type="button" class="btn btn-ghost"
                             onclick="correct_modal.close()">{% translate "Cancel" %}</button>
@@ -280,80 +400,23 @@
     </dialog>
 {% endif %}
 
-{% comment %} Visibility, changed where it is read (D-36). The warning is inside, next to
-   the choice it qualifies: widening republishes every note and photo already in
-   the thread, which is not something to learn after the fact. Restricting is
-   open to whoever may read; widening is an admin's move (doc 08). {% endcomment %}
+{% comment %} Same idiom as the status menu: one hidden form, and each entry submits its
+   own value. Behind the same guard as the menu -- a reader who may move nothing
+   is not handed the route. {% endcomment %}
 {% if visibility_choices|length > 1 %}
-    <dialog id="visibility_modal" class="modal modal-bottom sm:modal-middle">
-        <div class="modal-box">
-            <h3 class="font-semibold mb-3">{% translate "Who may read this" %}</h3>
-            <form method="post" action="{% url 'tickets:visibility' ticket.pk %}"
-                  class="flex flex-col gap-3">
-                {% csrf_token %}
-                {% with form=visibility_form %}
-                    {% include "tickets/_visibility_choice.html" %}
-                {% endwith %}
-                {% if can_widen %}
-                    <p class="text-xs opacity-70">
-                        {% translate "Widening publishes every comment and photo already in this thread." %}
-                    </p>
-                {% endif %}
-                <div class="modal-action">
-                    <button type="button" class="btn btn-ghost"
-                            onclick="visibility_modal.close()">{% translate "Cancel" %}</button>
-                    <button type="submit" class="btn btn-primary">
-                        {% translate "Change visibility" %}
-                    </button>
-                </div>
-            </form>
-        </div>
-        <form method="dialog" class="modal-backdrop"><button>{% translate "Close" %}</button></form>
-    </dialog>
+    <form method="post" action="{% url 'tickets:visibility' ticket.pk %}"
+          id="visibility-form" hidden>{% csrf_token %}</form>
 {% endif %}
 
-{% comment %} The status bar. Only the moves that make sense from here are shown: a
-   button that answers "you may not" is a button that should not be drawn. {% endcomment %}
+{% comment %} One form for the whole menu, the way the theme and logout buttons work in
+   base.html: a <button form="..." name="status" value="..."> submits the pair by
+   itself, so the menu holds no markup but its labels. Kept behind the same guard
+   the buttons had -- a reader who may move nothing must not be handed the route.
+   {% endcomment %}
 {% if can_work or can_reopen %}
-    <section class="flex flex-wrap gap-2 mb-3">
-        {% if ticket.status == "resolved" or ticket.status == "cancelled" %}
-            <form method="post" action="{% url 'tickets:status' ticket.pk %}" class="flex-1">
-                {% csrf_token %}
-                <input type="hidden" name="status" value="open">
-                <button type="submit" class="btn btn-warning w-full">
-                    {% translate "Reopen: not fixed" %}
-                </button>
-            </form>
-        {% else %}
-            {% if can_work and ticket.status != "in_progress" %}
-                <form method="post" action="{% url 'tickets:status' ticket.pk %}" class="flex-1">
-                    {% csrf_token %}
-                    <input type="hidden" name="status" value="in_progress">
-                    <button type="submit" class="btn btn-outline w-full">
-                        {% translate "In progress" %}
-                    </button>
-                </form>
-            {% endif %}
-            {% if can_work %}
-                {% comment %} Pupils close their own tickets: that is the point, and the
-                   full retest is what the wording asks for (doc 00). {% endcomment %}
-                <form method="post" action="{% url 'tickets:status' ticket.pk %}" class="flex-1">
-                    {% csrf_token %}
-                    <input type="hidden" name="status" value="resolved">
-                    <button type="submit" class="btn btn-success w-full">
-                        {% translate "Retested, resolved" %}
-                    </button>
-                </form>
-            {% endif %}
-            <form method="post" action="{% url 'tickets:status' ticket.pk %}" class="flex-1">
-                {% csrf_token %}
-                <input type="hidden" name="status" value="cancelled">
-                <button type="submit" class="btn btn-ghost w-full">
-                    {% translate "Withdraw" %}
-                </button>
-            </form>
-        {% endif %}
-    </section>
+    <form method="post" action="{% url 'tickets:status' ticket.pk %}" id="status-form" hidden>
+        {% csrf_token %}
+    </form>
 {% endif %}
 
 {% if attachments %}

@@ -36,6 +36,7 @@ from django.views.decorators.http import require_POST
 
 from accounts.authz import (
     ADMIN_ROLES,
+    VISIBILITY_HELP,
     WORKING_ROLES,
     Role,
     can_widen,
@@ -193,7 +194,7 @@ def ticket_detail(request, pk):
     assignees = list(ticket.assignees.all())
     # One choice means nothing to choose: the block stays a plain statement of
     # who can read, rather than a form that can only re-submit the status quo.
-    choices = visibility_targets(request.user, ticket.visibility)
+    choices = visibility_targets(request.user, ticket)
     # The same predicate as reopening, and for the same reason: a mistyped room
     # is almost always the reporter's own (D-37). Built only for whoever may
     # use it -- the form costs two queries that a reader has no use for.
@@ -215,10 +216,12 @@ def ticket_detail(request, pk):
             "correction_form": (
                 TicketCorrectionForm(instance=ticket, user=request.user) if may_correct else None
             ),
-            "visibility_choices": choices,
-            "visibility_form": VisibilityForm(
-                user=request.user, ticket=ticket, initial={"visibility": ticket.visibility}
-            ),
+            # Each level carries the sentence that says what it means (doc 08):
+            # the wording is part of the rule, so it travels with the choice
+            # rather than living in a template a translator never sees.
+            "visibility_choices": [
+                (value, label, VISIBILITY_HELP.get(value, "")) for value, label in choices
+            ],
             "can_widen": can_widen(request.user),
             "assignable": _team(request.user) if _is_admin(request.user) else None,
             "taggable": (
@@ -509,6 +512,10 @@ def ticket_correct(request, pk):
     if not can_work_on(request.user) and ticket.created_by_id != request.user.pk:
         raise Http404
 
+    # Read before the form is bound: validation writes the posted values onto
+    # the instance, so after `is_valid()` there is no "before" left to compare.
+    previous = ticket.priority
+
     form = TicketCorrectionForm(request.POST, instance=ticket, user=request.user)
     if not form.is_valid():
         # Reachable without hostility: pick a room, post before HTMX has
@@ -517,7 +524,16 @@ def ticket_correct(request, pk):
         messages.error(request, _("Correction refused: check the room and the machine."))
         return redirect("tickets:detail", pk=ticket.pk)
 
-    form.save()
+    with transaction.atomic():
+        form.save()
+        # Escalation is the one correction somebody has to hear about, and it
+        # is written inside the same transaction as the change (doc 09 §5).
+        # Only upwards: dropping a ticket back to normal asks nothing of
+        # anybody, and a notification nobody must act on is how a channel gets
+        # muted for good.
+        if ticket.priority == Ticket.Priority.URGENT and previous != Ticket.Priority.URGENT:
+            events.escalated(ticket, actor=request.user)
+
     messages.success(request, _("Ticket corrected."))
     return redirect("tickets:detail", pk=ticket.pk)
 

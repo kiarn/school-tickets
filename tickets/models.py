@@ -91,6 +91,11 @@ class Ticket(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    # Set when the description is rewritten, never by any other save (D-42).
+    # The same marker `Comment.edited_at` carries, and for the same reason: the
+    # thread below may answer a sentence that no longer reads the same way, and
+    # the reader is owed the fact that it changed.
+    description_edited_at = models.DateTimeField(null=True, blank=True)
     resolved_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

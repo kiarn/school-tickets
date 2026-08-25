@@ -62,6 +62,8 @@ def _headline(kind, *, room, count=1) -> str:
         return _("Marked resolved · %(room)s") % {"room": room}
     if kind == Kind.REOPENED:
         return _("Reopened · %(room)s") % {"room": room}
+    if kind == Kind.ESCALATED:
+        return _("Now urgent · %(room)s") % {"room": room}
     return _("Estate changes to review")
 
 

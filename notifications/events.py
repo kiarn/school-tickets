@@ -91,6 +91,22 @@ def status_changed(ticket, *, actor, previous) -> int:
     return _fanout(kind, recipients=_involved(ticket), ticket=ticket, actor=actor)
 
 
+def escalated(ticket, *, actor) -> int:
+    """A fault that has just become urgent (D-37).
+
+    The team, not ``_involved``. A ticket nobody has picked up yet has no
+    assignee, so the involved are the author alone -- who is usually the very
+    person raising the priority, and whom ``_fanout`` then removes. The
+    notification would reach nobody, which is the one outcome an escalation
+    may not have.
+
+    Deliberately outside ``GROUPED``: grouping exists to spare people the
+    traffic of ordinary tickets, and this is the opposite of ordinary.
+    """
+    recipients = [person for person in _team(ticket.school) if _may_read(person, ticket)]
+    return _fanout(Kind.ESCALATED, recipients=recipients, ticket=ticket, actor=actor)
+
+
 def _involved(ticket):
     """The author and the assignees.
 

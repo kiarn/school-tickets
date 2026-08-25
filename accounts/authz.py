@@ -60,17 +60,6 @@ def can_widen(user) -> bool:
     return getattr(user, "is_authenticated", False) and Role(user.role) in ADMIN_ROLES
 
 
-def can_restrict_to(user, target: int) -> bool:
-    """Restricting is open to anyone -- but never below one's own level.
-
-    Without this bound a member could hide a ticket from themselves, on a
-    ticket they neither authored nor were assigned to.
-    """
-    if not getattr(user, "is_authenticated", False):
-        return False
-    return target >= clearance(user)
-
-
 #: Roles that repair: they pick tickets up and move their status.
 #: ``reporter`` is deliberately absent -- reporting is not repairing.
 WORKING_ROLES = ADMIN_ROLES | frozenset({Role.MEMBER})
@@ -98,25 +87,36 @@ def creation_visibilities(user):
     return list(Visibility.choices) if getattr(user, "is_authenticated", False) else []
 
 
-def visibility_targets(user, current: int):
+def visibility_targets(user, ticket):
     """Levels an *existing* ticket may be moved to, current one included.
 
-    Two asymmetric rules meet here (doc 08):
+    Three rules meet here (doc 08, narrowed by D-41):
 
-    - **widening is reserved to admins**, because it retroactively publishes
-      every comment and every photo of the thread to a wider audience;
-    - **restricting is open to anyone**, but never below one's own clearance,
-      or the author of the restriction could lose a ticket they neither wrote
-      nor were assigned.
+    - **admins move it either way.** Widening retroactively publishes every
+      comment and every photo of the thread, which is why it stops there;
+    - **the author may restrict their own ticket**, and only restrict. It is
+      the direction that protects, and it is the one that cannot wait: a
+      teacher who realises their report about a pupil is being read by the
+      repair team should not have to find an admin while the thread stays open;
+    - **nobody else touches it.** Until D-41 any reader could restrict any
+      ticket, which made a stranger's report vanish from the team's list with
+      nothing said. Reading a ticket is not being responsible for it.
+
+    No lower bound is needed for the author: the author clause of
+    ``visible_to()`` keeps a ticket visible to whoever opened it whatever floor
+    they pick, so restricting to "admins only" cannot hide it from them. That
+    is the same reasoning ``creation_visibilities`` already rests on.
     """
     if not getattr(user, "is_authenticated", False):
         return []
     if can_widen(user):
         return list(Visibility.choices)
+    if getattr(ticket, "created_by_id", None) != user.pk:
+        return []
     return [
         (value, label)
         for value, label in Visibility.choices
-        if value <= current and can_restrict_to(user, value)
+        if value <= ticket.visibility
     ]
 
 

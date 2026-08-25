@@ -25,6 +25,10 @@ class Kind(models.TextChoices):
     COMMENT = "comment", _("New note")
     RESOLVED = "resolved", _("Marked resolved")
     REOPENED = "reopened", _("Reopened")
+    # D-37. It passes §3's test: what the recipient has to do about it is drop
+    # what they were doing and take this one instead. A fault does not become
+    # urgent on its own -- somebody decided it had.
+    ESCALATED = "escalated", _("Now urgent")
     SYNC_DECISIONS = "sync_decisions", _("Estate changes to review")
 
 

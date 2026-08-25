@@ -9,6 +9,7 @@ is the same one as ``visible_to()`` on the read side -- nothing global, ever.
 
 from django import forms
 from django.db.models import Max
+from django.utils import timezone
 from django.urls import reverse_lazy
 from django.utils.translation import gettext_lazy as _
 
@@ -259,15 +260,25 @@ class TicketCorrectionForm(SchoolScopedMixin, RoomAndDeviceMixin, forms.ModelFor
     again. Only the Django admin could touch them, which is to say: not the
     people standing in the corridor.
 
-    Three fields and no more. The title and the description are the reporter's
-    own words and are corrected by adding a note, not by rewriting history;
-    visibility has its own form and its own rule (doc 08); the status has its
-    buttons.
+    Four fields. The description joined them on Arnaud's request (D-42),
+    reversing the rule this docstring used to carry: a description is dictated
+    in a corridor and often wrong, and refusing to fix it left the wrong words
+    at the top of the page for good. What it costs is recorded rather than
+    prevented -- ``description_edited_at`` marks it, because the thread below
+    may answer a sentence that no longer reads the same way.
+
+    The **title** stays out: it is the line the list is scanned by, and it is
+    the one place where rewriting somebody's words changes what the ticket *is*
+    for everybody who bookmarked or searched it. Visibility keeps its own form
+    and its own rule (doc 08); the status has its menu.
     """
 
     class Meta:
         model = Ticket
-        fields = ["room", "device", "priority"]
+        fields = ["room", "device", "priority", "description"]
+        widgets = {
+            "description": forms.Textarea(attrs={"class": "textarea w-full", "rows": 4}),
+        }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -287,6 +298,11 @@ class TicketCorrectionForm(SchoolScopedMixin, RoomAndDeviceMixin, forms.ModelFor
         room = cleaned.get("room")
         if room and room.pk != self.instance.room_id:
             self.instance.room_label = room.name
+        # `clean()` runs before `_post_clean()` copies the posted values onto
+        # the instance, so this is the last moment where the old text is still
+        # there to compare against.
+        if cleaned.get("description", "") != self.instance.description:
+            self.instance.description_edited_at = timezone.now()
         return cleaned
 
 
@@ -331,4 +347,4 @@ class VisibilityForm(VisibilityOptionsMixin, forms.Form):
 
     def __init__(self, *args, user, ticket, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["visibility"].choices = visibility_targets(user, ticket.visibility)
+        self.fields["visibility"].choices = visibility_targets(user, ticket)

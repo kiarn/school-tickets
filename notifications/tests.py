@@ -94,6 +94,13 @@ class FanoutTests(Base):
         events.commented(comment)
         self.assertEqual(self.recipients(Kind.COMMENT), {"teacher"})
 
+    def test_an_escalation_calls_the_team_not_only_the_people_involved(self):
+        """D-37. The involved of an unclaimed ticket are its author alone --
+        usually the person raising the priority, whom the fan-out then removes.
+        Sent to `_involved`, the notification would reach nobody."""
+        events.escalated(self.ticket(created_by=self.lea), actor=self.lea)
+        self.assertEqual(self.recipients(Kind.ESCALATED), {"admin", "nils"})
+
     def test_a_pending_queue_is_announced_once_not_every_hour(self):
         """Re-notifying about the same unread queue is how a channel gets muted."""
         events.sync_decisions_pending(self.school, count=3)
@@ -119,6 +126,39 @@ class ViewWiringTests(Base):
         self.client.post(url, {"users": [self.nils.pk]})
         self.client.post(url, {"users": [self.nils.pk]})  # same list again
         self.assertEqual(Notification.objects.filter(kind=Kind.ASSIGNED).count(), 1)
+
+    def test_raising_a_ticket_to_urgent_notifies_the_team(self):
+        ticket = self.ticket(priority=Ticket.Priority.NORMAL)
+        self.client.force_login(self.lea)
+        self.client.post(reverse("tickets:correct", args=[ticket.pk]), {
+            "room": self.room.pk, "priority": Ticket.Priority.URGENT,
+        })
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.priority, Ticket.Priority.URGENT)
+        self.assertEqual(self.recipients(Kind.ESCALATED), {"admin", "nils"})
+
+    def test_a_correction_that_leaves_the_priority_alone_notifies_nobody(self):
+        """Moving a ticket to the room it should have been filed under is
+        bookkeeping: nobody has anything to do about it (doc 09 §4)."""
+        ticket = self.ticket(priority=Ticket.Priority.URGENT)
+        other = Room.objects.create(school=self.school, name="205")
+        self.client.force_login(self.lea)
+        self.client.post(reverse("tickets:correct", args=[ticket.pk]), {
+            "room": other.pk, "priority": Ticket.Priority.URGENT,
+        })
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.room, other)
+        self.assertEqual(Notification.objects.count(), 0)
+
+    def test_dropping_a_ticket_back_to_normal_notifies_nobody(self):
+        """Only upwards: a notification nobody must act on is how a channel
+        gets muted for good."""
+        ticket = self.ticket(priority=Ticket.Priority.URGENT)
+        self.client.force_login(self.lea)
+        self.client.post(reverse("tickets:correct", args=[ticket.pk]), {
+            "room": self.room.pk, "priority": Ticket.Priority.NORMAL,
+        })
+        self.assertEqual(Notification.objects.count(), 0)
 
     def test_the_badge_appears_on_every_page(self):
         events.ticket_opened(self.ticket())
@@ -373,6 +413,17 @@ class HeldOvernightTests(Base):
         delivery.deliver_pending()
         # After a note and a resolution, what matters is that it was resolved.
         self.assertIn("resolved", self.sent[-1])
+
+    def test_an_escalation_says_urgent_and_the_room_and_nothing_else(self):
+        """D-37 sends this one; §2 decides what it may carry. A lock screen
+        learns that something in A101 became urgent -- never the title, which
+        is where a pupil's words and a machine's name would be."""
+        ticket = self.ticket(title="Wasserschaden im Serverschrank")
+        events.escalated(ticket, actor=self.lea)
+        delivery.deliver_pending()
+        self.assertIn("urgent", self.sent[-1].lower())
+        self.assertIn("204", self.sent[-1])
+        self.assertNotIn("Wasserschaden", self.sent[-1])
 
     def test_what_was_read_over_the_weekend_never_rings_on_monday(self):
         """The application has no window; somebody may well have opened it on

@@ -78,6 +78,39 @@
     --tab-active-surface: oklch(38% 0.016 252.42);
 }
 
+/* --- The error red ----------------------------------------------------------
+ *
+ * daisyUI 5 ships `oklch(71% 0.194 13.428)` for `--color-error` in both
+ * themes: #ff627d, a coral pink. Two objections, and only the first is a
+ * matter of taste (Arnaud's, 2026-08-25 -- "trop rose").
+ *
+ * The second is measurable: at that lightness it gives **2.87:1 against white**,
+ * so every `text-error` in the light theme -- ten of them, all form errors --
+ * failed WCAG AA for body text. The same value is also outside the sRGB gamut,
+ * so what the screen shows is already a browser's approximation of it.
+ *
+ * Hue moves from 13 to 27, which is where red stops being pink, and lightness
+ * goes down in light / stays up in dark, because a fill has to part company
+ * with the surface behind it:
+ *
+ *     light  oklch(57% 0.23 27)  #df071a  5.02:1 on white
+ *     dark   oklch(70% 0.19 27)  #ff655a  4.85:1 on the dark card
+ *
+ * `--color-error-content` is the text drawn *on* that fill (three `alert-error`
+ * in the templates). Darkening the light fill takes daisyUI's dark-red content
+ * down to 3.13:1, so light switches to near-white (4.72:1); the dark theme
+ * keeps daisyUI's, which still gives 5.26:1 against the lighter fill.
+ */
+:root,
+[data-theme="light"] {
+    --color-error: oklch(57% 0.23 27);
+    --color-error-content: oklch(98% 0.01 27);
+}
+
+[data-theme="dark"] {
+    --color-error: oklch(70% 0.19 27);
+}
+
 /* Unlayered: daisyUI's `.card` sits in `@layer utilities`, and an unlayered
  * rule beats a layered one whatever the order. */
 .card {
