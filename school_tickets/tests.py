@@ -328,7 +328,15 @@ class CatalogueTests(TestCase):
     LOCALE = Path(settings.BASE_DIR) / "locale"
 
     def entries(self, language):
-        """(msgid, msgstr-is-empty) for every entry but the header."""
+        """(msgid, is-usable) for every entry but the header.
+
+        Usable, not merely present: an entry flagged ``fuzzy`` carries a
+        translation and gettext **ignores it at runtime**, so it renders in
+        English exactly like an empty one. `msgmerge` sets that flag by itself,
+        by guessing a new string from a similar old one -- which is how "All
+        rooms" arrived pre-translated from "Any room" and would have shipped
+        untranslated without a word.
+        """
         text = (self.LOCALE / language / "LC_MESSAGES" / "django.po").read_text()
         for block in text.split("\n\n"):
             lines = block.split("\n")
@@ -337,7 +345,8 @@ class CatalogueTests(TestCase):
                 continue  # the header, whose msgid is empty by definition
             body = [l for l in lines if l.startswith("msgstr")]
             filled = any(l not in ('msgstr ""', 'msgstr[0] ""', 'msgstr[1] ""') for l in body)
-            yield msgid[0], filled
+            fuzzy = any(l.startswith("#,") and "fuzzy" in l for l in lines)
+            yield msgid[0], filled and not fuzzy
 
     def test_german_and_french_are_complete(self):
         """Untranslated is not a state this project ships in: the school is
@@ -345,8 +354,8 @@ class CatalogueTests(TestCase):
         one -- it reads as broken rather than as untranslated."""
         for language in ("de", "fr"):
             with self.subTest(language=language):
-                missing = [msgid for msgid, filled in self.entries(language) if not filled]
-                self.assertEqual(missing, [], f"{len(missing)} untranslated in {language}")
+                missing = [msgid for msgid, usable in self.entries(language) if not usable]
+                self.assertEqual(missing, [], f"{len(missing)} unusable in {language}")
 
     def test_the_english_catalogue_is_deliberately_empty(self):
         """The msgid **are** the English (D-23), so every msgstr falls back to

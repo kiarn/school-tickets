@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: school-tickets\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-25 13:05+0200\n"
+"POT-Creation-Date: 2026-08-25 13:51+0200\n"
 "PO-Revision-Date: 2026-08-25 13:00+0200\n"
 "Last-Translator: \n"
 "Language-Team: French\n"
@@ -591,7 +591,7 @@ msgstr "Impossible d'abonner cet appareil."
 msgid "Notifications are unavailable in this browser."
 msgstr "Les notifications ne sont pas disponibles dans ce navigateur."
 
-#: templates/tickets/_device_options.html:5 tickets/forms.py:114
+#: templates/tickets/_device_options.html:5 tickets/forms.py:142
 msgid "No particular machine"
 msgstr "Aucune machine en particulier"
 
@@ -608,7 +608,7 @@ msgstr "Aucune note ne dit ce qui a marché."
 msgid "%(age)s ago"
 msgstr "il y a %(age)s"
 
-#: templates/tickets/detail.html:51 templates/tickets/form.html:71
+#: templates/tickets/detail.html:51 templates/tickets/form.html:97
 msgid "Tags"
 msgstr "Étiquettes"
 
@@ -617,6 +617,7 @@ msgid "Add a tag"
 msgstr "Ajouter une étiquette"
 
 #: templates/tickets/detail.html:67 templates/tickets/detail.html:91
+#: templates/tickets/form.html:136
 msgid "Visibility"
 msgstr "Visibilité"
 
@@ -628,7 +629,7 @@ msgstr "Élargir publie tous les commentaires et photos déjà présents dans ce
 msgid "Change visibility"
 msgstr "Changer la visibilité"
 
-#: templates/tickets/detail.html:103 templates/tickets/form.html:40
+#: templates/tickets/detail.html:103 templates/tickets/form.html:70
 msgid "Machine"
 msgstr "Machine"
 
@@ -716,8 +717,8 @@ msgstr "Retesté, résolu"
 msgid "Withdraw"
 msgstr "Retirer"
 
-#: templates/tickets/detail.html:286 templates/tickets/form.html:85
-#: tickets/forms.py:65
+#: templates/tickets/detail.html:286 templates/tickets/form.html:111
+#: tickets/forms.py:86
 msgid "Photos"
 msgstr "Photos"
 
@@ -778,43 +779,51 @@ msgstr "Ajouter une note"
 msgid "Report a fault"
 msgstr "Signaler une panne"
 
-#: templates/tickets/form.html:31
+#: templates/tickets/form.html:34
 msgid "Where"
 msgstr "Où"
 
-#: templates/tickets/form.html:33 templates/tickets/list.html:146
+#: templates/tickets/form.html:36 templates/tickets/list.html:146
 msgid "Room"
 msgstr "Salle"
 
 #: templates/tickets/form.html:44
-msgid "Optional. Leave empty if the fault is not one machine's."
-msgstr "Facultatif. Laisse vide si la panne ne concerne pas une machine précise."
-
-#: templates/tickets/form.html:52
 msgid "What"
 msgstr "Quoi"
 
-#: templates/tickets/form.html:54
+#: templates/tickets/form.html:46
 msgid "Title"
 msgstr "Titre"
 
-#: templates/tickets/form.html:61
+#: templates/tickets/form.html:60
+msgid "More fields"
+msgstr "Plus de champs"
+
+#: templates/tickets/form.html:62
+msgid "Machine, description, priority, tags, photos, visibility"
+msgstr "Machine, description, priorité, étiquettes, photos, visibilité"
+
+#: templates/tickets/form.html:74
+msgid "Optional. Leave empty if the fault is not one machine's."
+msgstr "Facultatif. Laisse vide si la panne ne concerne pas une machine précise."
+
+#: templates/tickets/form.html:83
 msgid "Description"
 msgstr "Description"
 
-#: templates/tickets/form.html:66
+#: templates/tickets/form.html:90
 msgid "Priority"
 msgstr "Priorité"
 
-#: templates/tickets/form.html:91
+#: templates/tickets/form.html:117
 msgid "Photograph equipment, not people. Location data is removed."
 msgstr "Photographie du matériel, pas des personnes. Les données de localisation sont supprimées."
 
-#: templates/tickets/form.html:99
+#: templates/tickets/form.html:125
 msgid "Who may read this"
 msgstr "Qui peut lire ceci"
 
-#: templates/tickets/form.html:103
+#: templates/tickets/form.html:139
 msgid "Open the ticket"
 msgstr "Ouvrir le ticket"
 
@@ -940,27 +949,35 @@ msgstr "%(name)s n'est pas une image."
 msgid "At most %(limit)s photos at a time."
 msgstr "%(limit)s photos au maximum à la fois."
 
-#: tickets/forms.py:74
+#: tickets/forms.py:101
 msgid "Black screen on the teacher's desk"
 msgstr "Écran noir au bureau du professeur"
 
-#: tickets/forms.py:79
+#: tickets/forms.py:106
 msgid "What you saw, and what you already tried."
 msgstr "Ce que tu as vu, et ce que tu as déjà essayé."
 
-#: tickets/forms.py:89
+#: tickets/forms.py:116
 msgid "Choose a room"
 msgstr "Choisis une salle"
 
-#: tickets/forms.py:134
+#: tickets/forms.py:187
+msgid "Recently"
+msgstr "Récemment"
+
+#: tickets/forms.py:188
+msgid "All rooms"
+msgstr "Toutes les salles"
+
+#: tickets/forms.py:222
 msgid "This machine is not in that room."
 msgstr "Cette machine n'est pas dans cette salle."
 
-#: tickets/forms.py:162
+#: tickets/forms.py:250
 msgid "What you tried, and what it did."
 msgstr "Ce que tu as essayé, et ce que ça a donné."
 
-#: tickets/forms.py:177
+#: tickets/forms.py:265
 msgid "Write something, or attach a photo."
 msgstr "Écris quelque chose, ou joins une photo."
 

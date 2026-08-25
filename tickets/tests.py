@@ -28,6 +28,7 @@ from accounts.authz import (
 from accounts.models import AuditLog, School, User
 from parc.models import Device, Room
 from tickets import attachments
+from tickets.forms import TicketForm
 from tickets.models import Attachment, Comment, Tag, Ticket, TicketAssignee, TicketTag
 
 
@@ -1304,3 +1305,102 @@ class ResolutionTests(TestCase):
             self.client.get(reverse("tickets:detail", args=[self.ticket.pk])),
             "This is what worked",
         )
+
+
+class QuickCaptureTests(TestCase):
+    """The corridor (D-35).
+
+    Most reports start as a sentence heard between two doors -- "R102 does not
+    work" -- from somebody who is not in front of the machine and has no
+    diagnosis. The form has to accept that and stop asking.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.school = School.objects.create(slug="lycee6", name="Lycee")
+        cls.a = Room.objects.create(school=cls.school, name="A101", sort_key="1-101")
+        cls.b = Room.objects.create(school=cls.school, name="B204", sort_key="2-204")
+        cls.c = Room.objects.create(school=cls.school, name="C305", sort_key="3-305")
+        cls.reporter = User.objects.enroll(school=cls.school, cn="lehrer", role=Role.REPORTER)
+        cls.device = Device.objects.create(
+            school=cls.school, room=cls.b, mac="48:5b:39:0b:2e:c4", hostname="b204-01"
+        )
+
+    def setUp(self):
+        self.client.force_login(self.reporter)
+
+    def test_a_room_and_a_sentence_are_enough(self):
+        """No machine, no description, no priority, no visibility, no photo --
+        which is everything the person in the corridor actually has."""
+        response = self.client.post(
+            reverse("tickets:create"), {"room": self.a.pk, "title": "DVD geht nicht"}
+        )
+        self.assertEqual(response.status_code, 302)
+        ticket = Ticket.objects.get()
+        self.assertEqual(ticket.room, self.a)
+        self.assertEqual(ticket.title, "DVD geht nicht")
+        self.assertEqual(ticket.description, "")
+        self.assertIsNone(ticket.device_id)
+        # The model's own defaults, applied rather than demanded.
+        self.assertEqual(ticket.priority, Ticket.Priority.NORMAL)
+        self.assertEqual(ticket.visibility, Visibility.TEAM)
+
+    def test_the_audience_is_stated_even_when_the_choice_is_folded(self):
+        """Doc 08: visibility is never implicit. Folding the radios away does
+        not make the answer invisible."""
+        page = self.client.get(reverse("tickets:create")).content.decode()
+        self.assertIn("Team", page.split("<button")[-2])
+
+    def test_the_folded_block_opens_when_it_holds_an_error(self):
+        """A folded error is an error nobody can see."""
+        response = self.client.post(reverse("tickets:create"), {
+            "room": self.a.pk, "title": "Kein Bild", "device": self.device.pk,
+        })
+        page = response.content.decode()
+        # Whichever refusal fires -- the narrowed queryset or the cross-check
+        # in clean() -- the message lands inside the disclosure, so what the
+        # test is about is that the disclosure is open around it.
+        self.assertIn("text-error", page)
+        self.assertIn("open>", page)
+        self.assertEqual(Ticket.objects.count(), 0)
+
+    def test_the_block_stays_shut_on_a_first_visit(self):
+        self.assertNotIn("open>", self.client.get(reverse("tickets:create")).content.decode())
+
+    def test_nothing_was_removed_from_the_form(self):
+        """The fields moved behind a disclosure; they did not go away. This is
+        what a later "simplification" has to break to drop one."""
+        page = self.client.get(reverse("tickets:create")).content.decode()
+        for name in ("device", "description", "priority", "visibility", "photos"):
+            with self.subTest(field=name):
+                self.assertIn(f'name="{name}"', page)
+
+    def test_the_rooms_last_reported_come_first(self):
+        """Faults cluster, and whoever reports walks the same corridor twice."""
+        for room in (self.c, self.b):
+            self.client.post(reverse("tickets:create"), {"room": room.pk, "title": "x"})
+        form = TicketForm(user=self.reporter)
+        groups = dict(form.fields["room"].choices[1:])
+        self.assertEqual(
+            [str(label) for _pk, label in groups["Recently"]], ["B204", "C305"]
+        )
+        self.assertEqual([str(label) for _pk, label in groups["All rooms"]], ["A101"])
+
+    def test_a_first_ticket_leaves_the_plain_alphabetical_list(self):
+        """Nobody has reported anything yet: two groups of which one is empty
+        would be worse than no grouping at all."""
+        form = TicketForm(user=self.reporter)
+        self.assertEqual([str(label) for _pk, label in form.fields["room"].choices[1:]],
+                         ["A101", "B204", "C305"])
+
+    def test_the_grouping_does_not_widen_what_may_be_posted(self):
+        """`choices` is replaced, `queryset` is not -- and the queryset is the
+        rule (see the module docstring of tickets.forms)."""
+        elsewhere = School.objects.create(slug="ailleurs3", name="Ailleurs")
+        foreign = Room.objects.create(school=elsewhere, name="Z999")
+        self.client.post(reverse("tickets:create"), {"room": self.a.pk, "title": "x"})
+        response = self.client.post(
+            reverse("tickets:create"), {"room": foreign.pk, "title": "Fremd"}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(Ticket.objects.filter(title="Fremd").count(), 0)

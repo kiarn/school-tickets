@@ -8,13 +8,19 @@ is the same one as ``visible_to()`` on the read side -- nothing global, ever.
 """
 
 from django import forms
+from django.db.models import Max
 from django.urls import reverse_lazy
 from django.utils.translation import gettext_lazy as _
 
-from accounts.authz import VISIBILITY_HELP, creation_visibilities, visibility_targets
+from accounts.authz import VISIBILITY_HELP, Visibility, creation_visibilities, visibility_targets
 from parc.models import Device, Room
 
 from .models import Comment, Tag, Ticket
+
+#: How many rooms the picker lifts to the top. Four is about what fits before
+#: a phone's select turns into a wheel; past that, "recent" stops meaning
+#: anything anyway.
+RECENT_ROOMS = 4
 
 
 class MultipleFileInput(forms.ClearableFileInput):
@@ -62,7 +68,28 @@ class SchoolScopedMixin:
 
 
 class TicketForm(VisibilityOptionsMixin, SchoolScopedMixin, forms.ModelForm):
+    """Two fields and a button, with everything else folded away (D-35).
+
+    The corridor is where most reports start: somebody says "R102 does not
+    work" between two doors, and whoever hears it has a room and a sentence --
+    no hostname, no photo, no diagnosis, because they are not standing in front
+    of the machine. Asking that person for seven fields is asking them not to
+    report. So the form opens on the two the corridor can answer, and the rest
+    waits behind a disclosure for the other case: a member, in the room, with
+    the fault in front of them.
+
+    Nothing is removed. Every field the full form had is still here, and the
+    defaults that apply when they are left alone are the ones the model already
+    carries: normal priority, team visibility, no machine, no tag.
+    """
+
     photos = MultipleFileField(required=False, label=_("Photos"))
+
+    #: What the disclosure hides. Named once because two things need it: the
+    #: template, to open the block when one of them is in error -- a folded
+    #: error is an error nobody can see -- and the reader, to know what "more
+    #: fields" means without counting them.
+    FOLDED = ("device", "description", "priority", "tags", "photos", "visibility")
 
     class Meta:
         model = Ticket
@@ -87,6 +114,7 @@ class TicketForm(VisibilityOptionsMixin, SchoolScopedMixin, forms.ModelForm):
 
         self.fields["room"].queryset = Room.objects.filter(school=school, is_active=True)
         self.fields["room"].empty_label = _("Choose a room")
+        self._lift_recent_rooms()
         # The machine list follows the room (D-17). htmx sends the select's own
         # value, so the parameter name is simply the field name.
         self.fields["room"].widget.attrs.update({
@@ -115,6 +143,12 @@ class TicketForm(VisibilityOptionsMixin, SchoolScopedMixin, forms.ModelForm):
         self.fields["device"].widget.attrs.update({"class": "select w-full"})
 
         self.fields["priority"].widget.attrs.update({"class": "select w-full"})
+        # Both carry a model default, and both are folded away (D-35). A
+        # browser posts them anyway -- a closed <details> still submits its
+        # inputs -- but a form whose quick path depends on that is a form one
+        # fold away from breaking. Optional here, defaulted in clean_*.
+        self.fields["priority"].required = False
+        self.fields["visibility"].required = False
 
         self.fields["tags"].queryset = Tag.objects.filter(school=school)
         self.fields["tags"].required = False
@@ -124,6 +158,60 @@ class TicketForm(VisibilityOptionsMixin, SchoolScopedMixin, forms.ModelForm):
             attrs={"class": "radio radio-primary mt-0.5"},
             choices=self.fields["visibility"].choices,
         )
+
+    def _lift_recent_rooms(self):
+        """Put the rooms this person last reported on at the top of the list.
+
+        A school has twenty to forty rooms, which on a phone is a wheel to
+        spin. The one being reported now is very often one of the last few:
+        faults cluster, and whoever reports is usually walking the same
+        corridor. Two `<optgroup>`s rather than a re-sorted flat list, because
+        a list that is neither alphabetical nor grouped reads as broken.
+
+        ``choices`` is replaced, ``queryset`` is not: validation still goes
+        through the full, school-scoped queryset, so nothing here can widen
+        what may be posted.
+        """
+        recent = list(
+            self.fields["room"].queryset
+            .filter(tickets__created_by=self.user)
+            .annotate(last_reported=Max("tickets__created_at"))
+            .order_by("-last_reported")[:RECENT_ROOMS]
+        )
+        if not recent:
+            return
+        seen = {room.pk for room in recent}
+        others = [r for r in self.fields["room"].queryset if r.pk not in seen]
+        self.fields["room"].choices = [
+            ("", self.fields["room"].empty_label),
+            (_("Recently"), [(room.pk, str(room)) for room in recent]),
+            (_("All rooms"), [(room.pk, str(room)) for room in others]),
+        ]
+
+    def clean_priority(self):
+        return self.cleaned_data.get("priority") or Ticket.Priority.NORMAL
+
+    def clean_visibility(self):
+        return self.cleaned_data.get("visibility") or Visibility.TEAM
+
+    @property
+    def folded_has_errors(self) -> bool:
+        """Whether the disclosure must be open on this render."""
+        return any(field in self.errors for field in self.FOLDED)
+
+    @property
+    def visibility_summary(self):
+        """The audience as a sentence, for the state where the radios are hidden.
+
+        Doc 08 asks that visibility never be implicit. Folding the *choice*
+        away does not have to make the *answer* invisible: the quick form says
+        who will read this, and the disclosure is where it is changed.
+        """
+        value = self["visibility"].value()
+        try:
+            return Visibility(int(value)).label
+        except (TypeError, ValueError):
+            return Visibility(Visibility.TEAM).label
 
     def clean(self):
         cleaned = super().clean()

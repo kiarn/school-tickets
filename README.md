@@ -65,7 +65,7 @@ nothing and provisions nobody, it only checks that an already-enrolled person
 is who they say they are.
 
 ```sh
-.venv/bin/python manage.py test              # 271 tests, visibility among them
+.venv/bin/python manage.py test              # 279 tests, visibility among them
 .venv/bin/python manage.py run_worker --once # one pass of every due job
 .venv/bin/python manage.py vapid_keys        # Web Push keys, once per install
 ```

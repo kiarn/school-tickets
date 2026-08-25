@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: school-tickets\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-25 13:05+0200\n"
+"POT-Creation-Date: 2026-08-25 13:51+0200\n"
 "PO-Revision-Date: 2026-08-25 13:00+0200\n"
 "Last-Translator: \n"
 "Language-Team: English\n"
@@ -591,7 +591,7 @@ msgstr ""
 msgid "Notifications are unavailable in this browser."
 msgstr ""
 
-#: templates/tickets/_device_options.html:5 tickets/forms.py:114
+#: templates/tickets/_device_options.html:5 tickets/forms.py:142
 msgid "No particular machine"
 msgstr ""
 
@@ -608,7 +608,7 @@ msgstr ""
 msgid "%(age)s ago"
 msgstr ""
 
-#: templates/tickets/detail.html:51 templates/tickets/form.html:71
+#: templates/tickets/detail.html:51 templates/tickets/form.html:97
 msgid "Tags"
 msgstr ""
 
@@ -617,6 +617,7 @@ msgid "Add a tag"
 msgstr ""
 
 #: templates/tickets/detail.html:67 templates/tickets/detail.html:91
+#: templates/tickets/form.html:136
 msgid "Visibility"
 msgstr ""
 
@@ -628,7 +629,7 @@ msgstr ""
 msgid "Change visibility"
 msgstr ""
 
-#: templates/tickets/detail.html:103 templates/tickets/form.html:40
+#: templates/tickets/detail.html:103 templates/tickets/form.html:70
 msgid "Machine"
 msgstr ""
 
@@ -716,8 +717,8 @@ msgstr ""
 msgid "Withdraw"
 msgstr ""
 
-#: templates/tickets/detail.html:286 templates/tickets/form.html:85
-#: tickets/forms.py:65
+#: templates/tickets/detail.html:286 templates/tickets/form.html:111
+#: tickets/forms.py:86
 msgid "Photos"
 msgstr ""
 
@@ -778,43 +779,51 @@ msgstr ""
 msgid "Report a fault"
 msgstr ""
 
-#: templates/tickets/form.html:31
+#: templates/tickets/form.html:34
 msgid "Where"
 msgstr ""
 
-#: templates/tickets/form.html:33 templates/tickets/list.html:146
+#: templates/tickets/form.html:36 templates/tickets/list.html:146
 msgid "Room"
 msgstr ""
 
 #: templates/tickets/form.html:44
-msgid "Optional. Leave empty if the fault is not one machine's."
-msgstr ""
-
-#: templates/tickets/form.html:52
 msgid "What"
 msgstr ""
 
-#: templates/tickets/form.html:54
+#: templates/tickets/form.html:46
 msgid "Title"
 msgstr ""
 
-#: templates/tickets/form.html:61
+#: templates/tickets/form.html:60
+msgid "More fields"
+msgstr ""
+
+#: templates/tickets/form.html:62
+msgid "Machine, description, priority, tags, photos, visibility"
+msgstr ""
+
+#: templates/tickets/form.html:74
+msgid "Optional. Leave empty if the fault is not one machine's."
+msgstr ""
+
+#: templates/tickets/form.html:83
 msgid "Description"
 msgstr ""
 
-#: templates/tickets/form.html:66
+#: templates/tickets/form.html:90
 msgid "Priority"
 msgstr ""
 
-#: templates/tickets/form.html:91
+#: templates/tickets/form.html:117
 msgid "Photograph equipment, not people. Location data is removed."
 msgstr ""
 
-#: templates/tickets/form.html:99
+#: templates/tickets/form.html:125
 msgid "Who may read this"
 msgstr ""
 
-#: templates/tickets/form.html:103
+#: templates/tickets/form.html:139
 msgid "Open the ticket"
 msgstr ""
 
@@ -940,27 +949,35 @@ msgstr ""
 msgid "At most %(limit)s photos at a time."
 msgstr ""
 
-#: tickets/forms.py:74
+#: tickets/forms.py:101
 msgid "Black screen on the teacher's desk"
 msgstr ""
 
-#: tickets/forms.py:79
+#: tickets/forms.py:106
 msgid "What you saw, and what you already tried."
 msgstr ""
 
-#: tickets/forms.py:89
+#: tickets/forms.py:116
 msgid "Choose a room"
 msgstr ""
 
-#: tickets/forms.py:134
+#: tickets/forms.py:187
+msgid "Recently"
+msgstr ""
+
+#: tickets/forms.py:188
+msgid "All rooms"
+msgstr ""
+
+#: tickets/forms.py:222
 msgid "This machine is not in that room."
 msgstr ""
 
-#: tickets/forms.py:162
+#: tickets/forms.py:250
 msgid "What you tried, and what it did."
 msgstr ""
 
-#: tickets/forms.py:177
+#: tickets/forms.py:265
 msgid "Write something, or attach a photo."
 msgstr ""
 
