@@ -2,7 +2,9 @@
 """Awarding, and creating a badge of one's own. Both admin-only (D-24)."""
 
 from django import forms
+from django.conf import settings
 from django.utils.text import slugify
+from django.utils.translation import get_language
 from django.utils.translation import gettext_lazy as _
 
 from accounts.authz import WORKING_ROLES
@@ -85,34 +87,47 @@ class AwardForm(forms.ModelForm):
 
 
 class BadgeForm(forms.ModelForm):
-    """A badge invented here. Never a catalogue badge.
+    """A badge invented here, in the language being read. Never a catalogue one.
+
+    One box per text and not one per language, unlike ``/admin``: this form is
+    on the catalogue page, on a phone, and six boxes to invent one badge is
+    how a feature stops being used. What is typed lands in the reader's
+    language, and the other languages are filled in ``/admin`` afterwards --
+    or never, which the fallback handles.
 
     ``is_catalog`` is not offered on purpose: a shared badge means a string in
     the Crowdin catalogues (D-15), which is a decision about the project, not
     about one afternoon in one establishment.
     """
 
+    name = forms.CharField(
+        max_length=200, label=_("Name"),
+        widget=forms.TextInput(attrs={
+            "class": "input w-full", "placeholder": _("First complete install"),
+        }),
+    )
+    description = forms.CharField(
+        required=False, label=_("Description"),
+        widget=forms.Textarea(attrs={
+            "class": "textarea w-full", "rows": 2,
+            "placeholder": _("What has to be done to earn it."),
+        }),
+    )
+
     class Meta:
         model = Badge
-        fields = ["name", "description", "icon", "family", "level"]
+        fields = ["icon", "family", "level"]
         widgets = {
-            "name": forms.TextInput(attrs={
-                "class": "input w-full", "placeholder": _("First complete install"),
-            }),
-            "description": forms.Textarea(attrs={
-                "class": "textarea w-full", "rows": 2,
-                "placeholder": _("What has to be done to earn it."),
-            }),
             "icon": forms.TextInput(attrs={
                 "class": "input w-full", "placeholder": "🛠",
             }),
             "family": forms.Select(attrs={"class": "select w-full"}),
-            "level": forms.Select(attrs={"class": "select w-full"}),
         }
+
+    field_order = ["name", "description", "icon", "family", "level"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["description"].required = False
         self.fields["icon"].required = False
         # A badge invented here may join a shipped ladder rather than stand on
         # its own -- a school that wants a fourth rung on one of them should
@@ -128,15 +143,25 @@ class BadgeForm(forms.ModelForm):
         )
 
     def clean_name(self):
-        name = self.cleaned_data["name"]
-        if Badge.objects.filter(name=name).exists():
+        """Told apart by what is read, not by what is stored.
+
+        The names are a JSON document now, so this compares the labels rather
+        than a column -- which is also the honest comparison: two badges
+        collide when they *look* the same on a profile.
+        """
+        name = self.cleaned_data["name"].strip()
+        if any(badge.label == name for badge in Badge.objects.all()):
             raise forms.ValidationError(_("A badge by that name already exists."))
         return name
 
     def save(self, commit=True):
         badge = super().save(commit=False)
         badge.is_catalog = False
-        badge.slug = unique_slug(badge.name)
+        language = get_language() or settings.LANGUAGE_CODE
+        badge.names = {language: self.cleaned_data["name"].strip()}
+        description = self.cleaned_data.get("description", "").strip()
+        badge.descriptions = {language: description} if description else {}
+        badge.slug = unique_slug(badge.label)
         if commit:
             badge.save()
         return badge

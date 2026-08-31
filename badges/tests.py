@@ -4,6 +4,7 @@
 from django.db import IntegrityError
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import translation
 
 from accounts.authz import Role, Visibility
 from accounts.models import AuditLog, User
@@ -23,10 +24,10 @@ class CatalogTests(TestCase):
             cn="admin", role=Role.ADMIN, display_name="Admin"
         )
         cls.local = Badge.objects.create(
-            slug="lycee-hdmi", name="First HDMI fault"
+            slug="lycee-hdmi", names={"en": "First HDMI fault"}
         )
         cls.shared = Badge.objects.create(
-            slug="first-linbo", is_catalog=True, name="First LINBO sync"
+            slug="first-linbo", is_catalog=True, names={"en": "First LINBO sync"}
         )
 
     def test_the_catalogue_shows_what_exists_and_never_who_holds_it(self):
@@ -54,14 +55,14 @@ class CatalogTests(TestCase):
         self.client.force_login(self.member)
         response = self.client.post(reverse("badges:create"), {"name": "Mine"})
         self.assertEqual(response.status_code, 404)
-        self.assertFalse(Badge.objects.filter(name="Mine").exists())
+        self.assertFalse(Badge.objects.filter(names__en="Mine").exists())
 
     def test_a_created_badge_is_never_shared(self):
         """A shared badge means a string in the Crowdin catalogues (D-15): not
         something decided here on an afternoon."""
         self.client.force_login(self.admin)
         self.client.post(reverse("badges:create"), {"name": "First full install"})
-        badge = Badge.objects.get(name="First full install")
+        badge = Badge.objects.get(names__en="First full install")
         self.assertFalse(badge.is_catalog)
         self.assertEqual(badge.slug, "first-full-install")
 
@@ -71,7 +72,7 @@ class CatalogTests(TestCase):
         of the same name are indistinguishable on a profile page."""
         self.client.force_login(self.admin)
         self.client.post(reverse("badges:create"), {"name": "First LINBO sync"})
-        self.assertEqual(Badge.objects.filter(name="First LINBO sync").count(), 1)
+        self.assertEqual(Badge.objects.filter(names__en="First LINBO sync").count(), 1)
 
 
 class AwardTests(TestCase):
@@ -88,7 +89,7 @@ class AwardTests(TestCase):
             cn="admin", role=Role.ADMIN, display_name="Admin"
         )
         cls.badge = Badge.objects.create(
-            slug="lycee-hdmi", name="First HDMI fault"
+            slug="lycee-hdmi", names={"en": "First HDMI fault"}
         )
         cls.ticket = Ticket.objects.create(
             room=cls.room, room_label="204", title="Black screen",
@@ -157,7 +158,7 @@ class TallyTests(TestCase):
         cls.admin = User.objects.enroll(
             cn="admin", role=Role.ADMIN
         )
-        cls.badge = Badge.objects.create(slug="lycee-hdmi", name="HDMI")
+        cls.badge = Badge.objects.create(slug="lycee-hdmi", names={"en": "HDMI"})
 
     def count(self):
         self.badge.refresh_from_db()
@@ -205,10 +206,10 @@ class BadgeAdminTests(TestCase):
     def setUpTestData(cls):
         cls.boss = User.objects.enroll(cn="boss", role=Role.ADMIN)
         cls.own = Badge.objects.create(
-            slug="default-school-hdmi", name="HDMI"
+            slug="default-school-hdmi", names={"en": "HDMI"}
         )
         cls.catalog = Badge.objects.create(
-            slug="first-linbo", is_catalog=True, name="First LINBO sync"
+            slug="first-linbo", is_catalog=True, names={"en": "First LINBO sync"}
         )
 
     def setUp(self):
@@ -218,15 +219,18 @@ class BadgeAdminTests(TestCase):
         page = self.client.get(reverse("admin:badges_badge_add"))
         self.assertEqual(
             list(page.context["adminform"].form.fields),
-            ["name", "description", "icon", "is_active"],
+            ["name_de", "description_de", "name_fr", "description_fr",
+             "name_en", "description_en", "icon", "is_active"],
         )
 
     def test_a_badge_made_here_is_never_shared(self):
         self.client.post(
             reverse("admin:badges_badge_add"),
-            {"name": "Werkstatt-Helfer", "description": "", "icon": "", "is_active": "on"},
+            {"name_de": "Werkstatt-Helfer", "name_fr": "", "name_en": "",
+             "description_de": "", "description_fr": "", "description_en": "",
+             "icon": "", "is_active": "on"},
         )
-        badge = Badge.objects.get(name="Werkstatt-Helfer")
+        badge = Badge.objects.get(names__de="Werkstatt-Helfer")
         self.assertFalse(badge.is_catalog)
         self.assertEqual(badge.slug, "werkstatt-helfer")
 
@@ -241,7 +245,7 @@ class BadgeAdminTests(TestCase):
         # slug, and not the name, is what stays locked.
         for field in ("slug", "is_catalog", "family", "level"):
             self.assertIn(field, readonly)
-        for field in ("name", "description", "is_active", "award_count"):
+        for field in ("is_active", "award_count"):
             self.assertNotIn(field, readonly)
         # `school` is not among them and is not on the page either: the column
         # itself is gone since D-49.
@@ -258,13 +262,38 @@ class BadgeAdminTests(TestCase):
         # migration put it in this database as it would in a new install.
         badge = Badge.objects.get(slug="network-1")
         self.assertEqual(badge.label, "Network · Beginner")
-        self.assertEqual(badge.name, "")
+        self.assertEqual(badge.names, {})
 
-        badge.name = "Kabelfuchs"
+        badge.names = {"en": "Kabelfuchs"}
         self.assertEqual(badge.label, "Kabelfuchs")
 
-        badge.name = ""
+        badge.names = {}
         self.assertEqual(badge.label, "Network · Beginner")
+
+    def test_an_override_is_per_language_and_falls_back(self):
+        """One box filled is enough, and is deliberately not an error.
+
+        A school that renames a rung in German and leaves French empty reads
+        German in French rather than a slug -- the fallback chain, not a
+        validation rule.
+        """
+        badge = Badge.objects.get(slug="network-1")
+        badge.names = {"de": "Kabelfuchs"}
+
+        with translation.override("de"):
+            self.assertEqual(badge.label, "Kabelfuchs")
+        with translation.override("fr"):
+            # Nothing was typed in French, and the shipped wording is not used
+            # either: what this school calls it wins over what it ships as.
+            self.assertEqual(badge.label, "Kabelfuchs")
+
+        badge.names = {"de": "Kabelfuchs", "fr": "Renard des câbles"}
+        with translation.override("fr"):
+            self.assertEqual(badge.label, "Renard des câbles")
+
+        badge.names = {}
+        with translation.override("fr"):
+            self.assertEqual(badge.label, "Réseau · Débutant")
 
     def test_a_badge_whose_slug_left_the_catalogue_still_draws(self):
         """A later version may drop a rung. The awards made under it happened."""
@@ -275,7 +304,7 @@ class BadgeAdminTests(TestCase):
         adminform = self.client.get(
             reverse("admin:badges_badge_change", args=[self.own.pk])
         ).context["adminform"]
-        self.assertNotIn("name", adminform.model_admin.get_readonly_fields(None, self.own))
+        self.assertNotIn("family", adminform.model_admin.get_readonly_fields(None, self.own))
         self.assertNotIn("school", adminform.form.fields)
 
     def test_the_identity_is_the_slug_and_names_may_now_repeat(self):
@@ -285,11 +314,11 @@ class BadgeAdminTests(TestCase):
         no conditional index (D-03): a unique one would have collided on the
         second empty name.
         """
-        Badge.objects.create(slug="hdmi-again", name="HDMI")
-        self.assertEqual(Badge.objects.filter(name="HDMI").count(), 2)
+        Badge.objects.create(slug="hdmi-again", names={"en": "HDMI"})
+        self.assertEqual(Badge.objects.filter(names__en="HDMI").count(), 2)
 
         with self.assertRaises(IntegrityError):
-            Badge.objects.create(slug="hdmi-again", name="Something else")
+            Badge.objects.create(slug="hdmi-again", names={"en": "Something else"})
 
 
 class BadgeAwardAdminTests(TestCase):
@@ -300,7 +329,7 @@ class BadgeAwardAdminTests(TestCase):
         cls.boss = User.objects.enroll(cn="boss", role=Role.ADMIN)
         cls.pupil = User.objects.enroll(cn="pupil", role=Role.MEMBER)
         cls.badge = Badge.objects.create(
-            slug="default-school-hdmi", name="HDMI"
+            slug="default-school-hdmi", names={"en": "HDMI"}
         )
         cls.given = BadgeAward.objects.create(
             badge=cls.badge, user=cls.pupil, awarded_by=cls.boss

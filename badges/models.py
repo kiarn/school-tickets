@@ -7,6 +7,7 @@ towards taking the easy faults and skipping the full retest.
 
 from django.conf import settings
 from django.db import models
+from django.utils.translation import get_language
 from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
 from django.utils.translation import gettext_lazy as _
@@ -29,10 +30,17 @@ class Badge(models.Model):
     slug = models.SlugField(unique=True)
     # When true: the words come from `catalog.py` and travel to Crowdin (D-15).
     is_catalog = models.BooleanField(default=False)
-    # Empty on a catalogue badge unless somebody here wanted other words.
-    # Clearing it restores the shipped, translated text.
-    name = models.CharField(max_length=200, blank=True, verbose_name=_("Name"))
-    description = models.TextField(blank=True, verbose_name=_("Description"))
+    # The words this school chose, per language: {"de": "...", "fr": "..."}.
+    # Empty on a catalogue badge unless somebody here wanted other words, and
+    # emptying one language restores the shipped, translated text for it.
+    #
+    # JSON rather than a column per language: the project ships three today
+    # and Crowdin may bring more, and a language should not cost a migration
+    # in two models. Nothing is required -- an admin who fills German and
+    # leaves French empty gets German in French, which is their business and
+    # is fixed by typing in the empty box.
+    names = models.JSONField(default=dict, blank=True)
+    descriptions = models.JSONField(default=dict, blank=True)
     icon = models.CharField(max_length=100, blank=True)
     # The ladder this badge belongs to, and which rung. Level 0 is a badge
     # earned once, which is not a rung and wears no metal.
@@ -59,38 +67,56 @@ class Badge(models.Model):
         # non-conditional unique index -- the only kind MariaDB gives us
         # (D-03) -- would collide on the second empty one. The identity moved
         # to `slug`, which is unique already.
-        ordering = ["order", "name", "slug"]
+        ordering = ["order", "slug"]
 
     def __str__(self):
         return self.label
+
+    @staticmethod
+    def in_language(texts) -> str:
+        """One string out of the per-language dictionary, or "".
+
+        The reading language first, then the site's own, then whatever is
+        filled. That last step is the one worth explaining: a badge invented
+        here may exist in one language only, and answering a French reader
+        with a slug because the French box is empty would be worse than
+        answering them in German.
+        """
+        if not texts:
+            return ""
+        for code in (get_language(), settings.LANGUAGE_CODE):
+            if code and texts.get(code):
+                return texts[code]
+        return next((text for text in texts.values() if text), "")
+
+    def _shipped(self):
+        return BY_SLUG.get(self.slug) if self.is_catalog else None
 
     @property
     def label(self) -> str:
         """This school's words, else the shipped ones, else the slug.
 
         The order is the design. An override wins because somebody here typed
-        it on purpose; emptying the field falls back through to the translated
+        it on purpose; emptying it falls back through to the translated
         catalogue text, which is what makes the customisation reversible.
 
         The last fallback is not decoration: a badge whose slug has dropped out
         of a later version's catalogue still has to draw something on the
         profile of the person holding it.
         """
-        if self.name:
-            return self.name
-        shipped = BY_SLUG.get(self.slug)
-        if self.is_catalog and shipped is not None:
-            return str(shipped.name)
-        return self.slug
+        chosen = self.in_language(self.names)
+        if chosen:
+            return chosen
+        shipped = self._shipped()
+        return str(shipped.name) if shipped else self.slug
 
     @property
     def summary(self) -> str:
-        if self.description:
-            return self.description
-        shipped = BY_SLUG.get(self.slug)
-        if self.is_catalog and shipped is not None:
-            return str(shipped.description)
-        return ""
+        chosen = self.in_language(self.descriptions)
+        if chosen:
+            return chosen
+        shipped = self._shipped()
+        return str(shipped.description) if shipped else ""
 
     @property
     def family_label(self) -> str:

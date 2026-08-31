@@ -30,7 +30,7 @@ class ProfileTests(TestCase):
 
     def test_a_profile_shows_its_badges_with_the_sentence_that_came_with_them(self):
         badge = Badge.objects.create(
-            slug="first-hdmi", name="First HDMI fault",
+            slug="first-hdmi", names={"en": "First HDMI fault"},
             icon="🔌",
         )
         BadgeAward.objects.create(
@@ -475,7 +475,7 @@ class ErasureTests(TestCase):
         )
         TicketAssignee.objects.create(ticket=self.ticket, user=self.pupil)
         BadgeAward.objects.create(
-            badge=Badge.objects.create(slug="lycee-x", name="X"),
+            badge=Badge.objects.create(slug="lycee-x", names={"en": "X"}),
             user=self.pupil, awarded_by=self.boss,
         )
         PushSubscription.objects.create(

@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: school-tickets\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-31 18:39+0200\n"
+"POT-Creation-Date: 2026-08-31 19:03+0200\n"
 "PO-Revision-Date: 2026-08-25 13:00+0200\n"
 "Last-Translator: \n"
 "Language-Team: English\n"
@@ -172,19 +172,25 @@ msgstr ""
 msgid "Profile saved."
 msgstr ""
 
-#: badges/admin.py:26
-msgid "Leave empty to keep the wording shipped with the project, translated. What you type here is used at this school only."
+#: badges/admin.py:44
+msgid "Leave empty to keep the wording shipped with the project, translated."
 msgstr ""
 
-#: badges/admin.py:28
-msgid "Leave empty to keep the shipped wording."
+#: badges/admin.py:57
+msgid "Give it a name in at least one language."
 msgstr ""
 
-#: badges/admin.py:29
-msgid "Unticking hides it from the award screen. It keeps the badges already given -- deleting it would not."
+#: badges/admin.py:90
+#, python-format
+msgid "Name (%(language)s)"
 msgstr ""
 
-#: badges/admin.py:81
+#: badges/admin.py:94
+#, python-format
+msgid "Description (%(language)s)"
+msgstr ""
+
+#: badges/admin.py:153
 msgid "Decided elsewhere"
 msgstr ""
 
@@ -392,53 +398,53 @@ msgstr ""
 msgid "You are in the workshop regularly over a long stretch, whatever the faults happen to be."
 msgstr ""
 
-#: badges/forms.py:26
+#: badges/forms.py:28
 msgid "What they did, in the words you would say to them."
 msgstr ""
 
-#: badges/forms.py:67
+#: badges/forms.py:69
 msgid "No particular ticket"
 msgstr ""
 
-#: badges/forms.py:76
+#: badges/forms.py:78
 msgid "They already hold this badge."
 msgstr ""
 
-#: badges/forms.py:100
-msgid "First complete install"
-msgstr ""
-
 #: badges/forms.py:104
-msgid "What has to be done to earn it."
-msgstr ""
-
-#: badges/forms.py:123
-msgid "Earned once"
-msgstr ""
-
-#: badges/forms.py:124
-#, python-format
-msgid "Level %(level)d"
-msgstr ""
-
-#: badges/forms.py:127
-msgid "Level"
-msgstr ""
-
-#: badges/forms.py:133
-msgid "A badge by that name already exists."
-msgstr ""
-
-#: badges/models.py:34
 msgid "Name"
 msgstr ""
 
-#: badges/models.py:35 templates/tickets/detail.html:413
+#: badges/forms.py:106
+msgid "First complete install"
+msgstr ""
+
+#: badges/forms.py:110 templates/tickets/detail.html:413
 #: templates/tickets/form.html:83
 msgid "Description"
 msgstr ""
 
-#: badges/models.py:44
+#: badges/forms.py:113
+msgid "What has to be done to earn it."
+msgstr ""
+
+#: badges/forms.py:138
+msgid "Earned once"
+msgstr ""
+
+#: badges/forms.py:139
+#, python-format
+msgid "Level %(level)d"
+msgstr ""
+
+#: badges/forms.py:142
+msgid "Level"
+msgstr ""
+
+#: badges/forms.py:154
+msgid "A badge by that name already exists."
+msgstr ""
+
+#: badges/models.py:52
 msgid "Offered"
 msgstr ""
 

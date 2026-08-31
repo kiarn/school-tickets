@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: school-tickets\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-31 18:39+0200\n"
+"POT-Creation-Date: 2026-08-31 19:03+0200\n"
 "PO-Revision-Date: 2026-08-25 13:00+0200\n"
 "Last-Translator: \n"
 "Language-Team: German\n"
@@ -172,19 +172,26 @@ msgstr "Sichtbarkeitsänderung"
 msgid "Profile saved."
 msgstr "Profil gespeichert."
 
-#: badges/admin.py:26
-msgid "Leave empty to keep the wording shipped with the project, translated. What you type here is used at this school only."
-msgstr "Leer lassen, um den mitgelieferten, übersetzten Text zu behalten. Was du hier einträgst, gilt nur an dieser Schule."
+#: badges/admin.py:44
+#| msgid "Leave empty to keep the wording shipped with the project, translated. What you type here is used at this school only."
+msgid "Leave empty to keep the wording shipped with the project, translated."
+msgstr "Leer lassen, um den mitgelieferten, übersetzten Text zu behalten."
 
-#: badges/admin.py:28
-msgid "Leave empty to keep the shipped wording."
-msgstr "Leer lassen, um den mitgelieferten Text zu behalten."
+#: badges/admin.py:57
+msgid "Give it a name in at least one language."
+msgstr "Gib ihm in mindestens einer Sprache einen Namen."
 
-#: badges/admin.py:29
-msgid "Unticking hides it from the award screen. It keeps the badges already given -- deleting it would not."
-msgstr "Ohne Haken taucht es beim Verleihen nicht mehr auf. Bereits verliehene Abzeichen bleiben erhalten — beim Löschen wären sie weg."
+#: badges/admin.py:90
+#, python-format
+msgid "Name (%(language)s)"
+msgstr "Name (%(language)s)"
 
-#: badges/admin.py:81
+#: badges/admin.py:94
+#, python-format
+msgid "Description (%(language)s)"
+msgstr "Beschreibung (%(language)s)"
+
+#: badges/admin.py:153
 msgid "Decided elsewhere"
 msgstr "Anderswo entschieden"
 
@@ -201,7 +208,6 @@ msgid "Presentation equipment"
 msgstr "Präsentationstechnik"
 
 #: badges/catalog.py:39
-#| msgid "Printer"
 msgid "Printing"
 msgstr "Drucker"
 
@@ -393,53 +399,53 @@ msgstr "Immer dabei"
 msgid "You are in the workshop regularly over a long stretch, whatever the faults happen to be."
 msgstr "Du bist über längere Zeit regelmäßig in der Werkstatt, egal welche Fehler gerade anstehen."
 
-#: badges/forms.py:26
+#: badges/forms.py:28
 msgid "What they did, in the words you would say to them."
 msgstr "Was diese Person getan hat, in den Worten, die du ihr sagen würdest."
 
-#: badges/forms.py:67
+#: badges/forms.py:69
 msgid "No particular ticket"
 msgstr "Kein bestimmtes Ticket"
 
-#: badges/forms.py:76
+#: badges/forms.py:78
 msgid "They already hold this badge."
 msgstr "Diese Person hat dieses Abzeichen schon."
 
-#: badges/forms.py:100
-msgid "First complete install"
-msgstr "Erste komplette Installation"
-
 #: badges/forms.py:104
-msgid "What has to be done to earn it."
-msgstr "Was man tun muss, um es zu bekommen."
-
-#: badges/forms.py:123
-msgid "Earned once"
-msgstr "Einmalig"
-
-#: badges/forms.py:124
-#, python-format
-msgid "Level %(level)d"
-msgstr "Stufe %(level)d"
-
-#: badges/forms.py:127
-msgid "Level"
-msgstr "Stufe"
-
-#: badges/forms.py:133
-msgid "A badge by that name already exists."
-msgstr "Ein Abzeichen mit diesem Namen gibt es schon."
-
-#: badges/models.py:34
 msgid "Name"
 msgstr "Name"
 
-#: badges/models.py:35 templates/tickets/detail.html:413
+#: badges/forms.py:106
+msgid "First complete install"
+msgstr "Erste komplette Installation"
+
+#: badges/forms.py:110 templates/tickets/detail.html:413
 #: templates/tickets/form.html:83
 msgid "Description"
 msgstr "Beschreibung"
 
-#: badges/models.py:44
+#: badges/forms.py:113
+msgid "What has to be done to earn it."
+msgstr "Was man tun muss, um es zu bekommen."
+
+#: badges/forms.py:138
+msgid "Earned once"
+msgstr "Einmalig"
+
+#: badges/forms.py:139
+#, python-format
+msgid "Level %(level)d"
+msgstr "Stufe %(level)d"
+
+#: badges/forms.py:142
+msgid "Level"
+msgstr "Stufe"
+
+#: badges/forms.py:154
+msgid "A badge by that name already exists."
+msgstr "Ein Abzeichen mit diesem Namen gibt es schon."
+
+#: badges/models.py:52
 msgid "Offered"
 msgstr "Wird vergeben"
 
@@ -1359,3 +1365,9 @@ msgstr "Sichtbarkeit aktualisiert."
 #: tickets/views.py:611
 msgid "Photo removed."
 msgstr "Foto entfernt."
+
+#~ msgid "Leave empty to keep the shipped wording."
+#~ msgstr "Leer lassen, um den mitgelieferten Text zu behalten."
+
+#~ msgid "Unticking hides it from the award screen. It keeps the badges already given -- deleting it would not."
+#~ msgstr "Ohne Haken taucht es beim Verleihen nicht mehr auf. Bereits verliehene Abzeichen bleiben erhalten — beim Löschen wären sie weg."
