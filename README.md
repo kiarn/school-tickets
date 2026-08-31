@@ -1,15 +1,21 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
-# School Tickets
+# 🎟️ School Tickets
 
 Ticket management for the pupils who repair the hardware of a school running
 [linuxmuster.net](https://linuxmuster.net). Built for the phone: it is used
 standing up in a classroom.
 
-**Status: first draft.** The foundation, the estate reconciliation and every
-screen -- tickets read and written, profiles, badges, notifications -- are in
-place and tested. OIDC and the lmnapi endpoints are not. See "Not done yet".
+**Status: first draft. Not ready for production.** The foundation, the estate
+reconciliation and every screen -- tickets read and written, profiles, badges,
+notifications -- are in place and tested. OIDC and the lmnapi endpoints are
+not. See "Not done yet".
 
-## Getting started
+It is also still being developed too actively to be deployed to anyone: the
+data model and its migrations change from one week to the next, and no upgrade
+path between two commits is offered or kept working. Read it, run it, take it
+apart -- but do not put a school's tickets in it yet.
+
+## 🚀 Getting started
 
 ```sh
 python3 -m venv .venv && .venv/bin/pip install -e .
@@ -22,19 +28,6 @@ export ST_DB=sqlite                 # production runs MariaDB in utf8mb4 (D-03)
 Then sign in at `/login/` with that `cn` and password. `manage.py set_password
 --cn <login>` sets one on an account that has none, and asks at the terminal
 when `--password` is omitted.
-
-A working copy shared between several machines -- a synchronised folder, a
-different Python version on each -- wants one environment per machine instead,
-because a virtualenv hardcodes its own absolute path and does not survive being
-moved or reused elsewhere:
-
-```sh
-python3 -m venv .venv/"$(hostname -s)"
-.venv/"$(hostname -s)"/bin/pip install -e .
-```
-
-`.gitignore` covers either layout. Read every `.venv/bin/...` below as that
-path.
 
 The stylesheet is versioned, so installing the project needs none of what
 follows. It is only for changing `assets/app.css` or a template, and the first command fetches the
@@ -87,7 +80,7 @@ virtualenv. Forget the compilation entirely and `manage.py check` says so
 (`W006`) -- the price of keeping the binaries out of the repository is that
 their absence has to be loud.
 
-## The two processes
+## ⚙️ The two processes
 
 | | role | lmnapi secret |
 |---|---|---|
@@ -101,59 +94,16 @@ belongs in; it writes nothing, because guessing would undo the separation.
 The separation rests on two environment files with different permissions, not
 on the discipline of the code. Units live in [`debian/`](debian/).
 
-## Seven rules worth knowing before touching the code
+## 🔒 Before touching the code
 
-**Every ticket read goes through `Ticket.objects.visible_to(user)`.** Never the
-bare queryset. The authorisation scale lives in `accounts/authz.py`; a ticket
-you may not see returns 404, never 403, because a 403 on a sequential
-identifier reveals existence. Attachments are never served from `MEDIA_URL`:
-they go through `tickets.views.attachment`, which re-checks the parent ticket.
+Seven rules carry the security of this application -- ticket visibility, what
+separates reading from writing, the notification checked twice, the single
+administration role, enrolment, the resolution mark, and the one secret the
+worker holds. They are written up in
+[`CONTRIBUTING.md`](CONTRIBUTING.md), and nothing in this codebase makes sense
+without them.
 
-**Being able to read a ticket is not being able to write to it.** Each write
-view names the predicate it needs -- `can_work_on`, `can_widen`,
-`can_restrict_to` -- and a refused write answers with the same 404. Two rules
-are worth knowing before touching them: assigning somebody grants them read
-access, which is why only an admin may assign anyone but themselves; and
-uploaded photos have their type read from their bytes, their metadata (so their
-GPS coordinates) removed, their long edge capped at 2048 px, and are stored
-under a name we chose, never the one they arrived with. A file Pillow cannot
-decode is refused rather than kept unscrubbed.
-
-**A notification never crosses `visible_to()` -- and it is checked twice.**
-Once when the row is written, once again by the worker just before the Push
-leaves, because restricting a ticket is open to everyone and may happen in
-between. A notification that became invisible is dropped, never delayed. The
-Push payload carries the kind of event and the room, and nothing else: it is
-read off a locked screen. The in-app list may say more, being behind the
-session.
-
-**There is one administration role, and it is a Django superuser** (D-27).
-`role = admin` sets `is_superuser`, maintained in `User.save()` so that a role
-changed from the Django admin carries the flag with it. `is_staff` means
-"superuser" and nothing else; the question the *application* asks is
-`user.is_admin`, which is a different question with the same answer.
-
-**Signing in is not being given access.** Enrolment grants access, and only
-enrolment: the login backend creates no account and provisions nobody. Every
-failure -- unknown login, wrong password, deactivated or anonymised account --
-answers with the same sentence, because two different messages would turn the
-form into a way of asking who is enrolled.
-
-**A resolution is offered, never required** (D-29). `Ticket.resolution_comment`
-points at the note in the thread that says what actually worked, and nothing
-enforces it: a mandatory field teaches people to type "ok" rather than to write
-a resolution, and a duplicate or a false alarm has none to give. What replaces
-the constraint is the gap being *visible* -- a resolved ticket with no note
-marked says so on its page and on its card in the list. The mark also survives
-a reopening, where `resolved_by` and `resolved_at` are cleared: "who closed
-this" is a question a reopened ticket no longer has, "what worked last time" is
-the one its next reader starts from.
-
-**The worker holds the only lmnapi secret.** `parc/lmnapi.py` reads it from the
-process environment, never from Django settings, so the web service can share
-the code without being able to use it.
-
-## Language
+## 🌍 Language
 
 Code is **English** throughout: identifiers, comments, docstrings, test names
 and translatable strings. Source strings are English, which makes English a
@@ -185,7 +135,7 @@ continuation lines for exactly that reason.
 The design journal is French and lives outside this repository (see
 "Design journal" below).
 
-## Design journal
+## 📓 Design journal
 
 The reasoning behind every decision -- data model, permissions, the parc
 synchronisation rules, GDPR, ticket visibility -- is written up as a numbered
@@ -198,7 +148,7 @@ traced back to its reasoning. The `specs/` directory itself is written in
 French and **not tracked in this repository**: it is the roadmap, not a shipped
 artefact, which is why the paths resolve to nothing in a fresh clone.
 
-## Not done yet
+## 🚧 Not done yet
 
 Three of these wait on the same thing and are meant to be done in one pass, the
 day there are credentials for Keycloak and for lmnapi: the OIDC backend, the
@@ -245,21 +195,21 @@ be written honestly before somebody has read a real response from either system
   so certificates come first. Waiting on the lmnapi endpoint, whose semantics
   are Q-08 -- sophomorix moves leavers rather than deleting them, so "this `cn`
   exists" and "this person is still here" are not the same question.
-- **A starter set of tags and badges.** A fresh install has no vocabulary at
-  all: the tag dialog opens on "No tag exists yet", and the
-  badge catalogue is empty -- the five catalogue badges only ever existed in
-  the demo seed, which is not part of this repository. Both are configurable by
-  design, so what is missing is not a mechanism but a **default proposal**: a
-  handful of tags for the faults that recur, and a catalogue an administrator
-  prunes, renames or ignores. The split of D-15 decides how each half is
-  shipped -- catalogue badges are `msgid` that travel with the code and are
-  translated, while a tag is this instance's own vocabulary and is never translated,
-  so the two cannot be seeded by the same mechanism.
+- **A starter set of tags.** A fresh install still has no tag vocabulary: the
+  tag dialog opens on "No tag exists yet". Tags are configurable by design, so
+  what is missing is not a mechanism but a **default proposal**, a handful for
+  the faults that recur. The badges used to be listed here too and no longer
+  are: `badges/catalog.py` ships twenty-one of them, seeded by a migration and
+  by `sync_badges`. The tags cannot borrow that answer, and D-15 says why -- a
+  catalogue badge is a `msgid` travelling with the code, translated on the
+  platform, while a tag is this instance's own vocabulary and is never
+  translated, so the two cannot be seeded by the same mechanism.
 - **Crowdin.** The catalogues are written and complete, but nothing is wired
-  to the translation platform the other linuxmuster projects use (D-15), and
-  its free open-source tier generally assumes a public repository while this
-  one will be private (D-19). Until then, a fourth language means editing a
-  `.po` by hand.
+  to the translation platform the other linuxmuster projects use (D-15). What
+  stood in the way no longer does: D-19 assumed this repository would stay
+  private, and the free open-source tier wants a public one -- it is public
+  now, so what is left is the wiring itself. Until it exists, a fourth
+  language means editing a `.po` by hand.
 - **An automatic install prompt, and anything offline.** The manifest is there
   (D-33), so the application installs to a home screen -- but `sw.js` has no
   `fetch` handler, deliberately: no caching, no offline shell (doc 09). Chrome
@@ -268,7 +218,7 @@ be written honestly before somebody has read a real response from either system
   what installs it. Whether to add a handler, and how much of the application
   should work with no network, is Q-09 and is not settled.
 
-## Licence
+## ⚖️ Licence
 
     School Tickets - ticket management for pupil hardware repairers
     Copyright (C) 2026  Arnaud Kientz
