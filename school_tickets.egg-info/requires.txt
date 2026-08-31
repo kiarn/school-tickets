@@ -1,0 +1,11 @@
+Django<6,>=5.0
+mysqlclient>=2.2
+Pillow>=10
+pywebpush>=2.0
+
+[dev]
+pytest
+pytest-django
+
+[heic]
+pillow-heif>=0.16

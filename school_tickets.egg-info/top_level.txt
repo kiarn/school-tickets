@@ -1,0 +1,6 @@
+accounts
+badges
+notifications
+parc
+school_tickets
+tickets

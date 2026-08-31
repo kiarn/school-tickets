@@ -1,0 +1,17 @@
+Metadata-Version: 2.4
+Name: school_tickets
+Version: 0.1.0.dev0
+Summary: Ticket management for the pupils who repair the hardware of a linuxmuster.net school
+License-Expression: GPL-3.0-or-later
+Requires-Python: >=3.11
+License-File: LICENSE
+Requires-Dist: Django<6,>=5.0
+Requires-Dist: mysqlclient>=2.2
+Requires-Dist: Pillow>=10
+Requires-Dist: pywebpush>=2.0
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: pytest-django; extra == "dev"
+Provides-Extra: heic
+Requires-Dist: pillow-heif>=0.16; extra == "heic"
+Dynamic: license-file

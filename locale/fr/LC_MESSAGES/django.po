@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: school-tickets\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-26 00:41+0200\n"
+"POT-Creation-Date: 2026-08-31 18:39+0200\n"
 "PO-Revision-Date: 2026-08-25 13:00+0200\n"
 "Last-Translator: \n"
 "Language-Team: French\n"
@@ -17,37 +17,37 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
 
-#: accounts/admin.py:37
+#: accounts/admin.py:50
 msgid "The linuxmuster login, spelled as the directory spells it."
 msgstr "L'identifiant linuxmuster, écrit comme l'annuaire l'écrit."
 
-#: accounts/admin.py:49
+#: accounts/admin.py:62
 #, python-format
 msgid "%(cn)s is already enrolled."
 msgstr "%(cn)s est déjà inscrit."
 
-#: accounts/admin.py:87
+#: accounts/admin.py:100
 msgid "Access"
 msgstr "Accès"
 
-#: accounts/admin.py:88
+#: accounts/admin.py:101
 msgid "From the directory"
 msgstr "Depuis l'annuaire"
 
-#: accounts/admin.py:89
+#: accounts/admin.py:102
 msgid "Chosen by this person"
 msgstr "Choisi par cette personne"
 
-#: accounts/admin.py:90
+#: accounts/admin.py:103
 msgid "History"
 msgstr "Historique"
 
-#: accounts/admin.py:135
+#: accounts/admin.py:148
 #, python-format
 msgid "%(cn)s is enrolled. Their name and address arrive with the first login; `manage.py set_password` grants a local password until OIDC lands."
 msgstr "%(cn)s est inscrit. Son nom et son adresse arriveront à la première connexion ; `manage.py set_password` donne un mot de passe local en attendant OIDC."
 
-#: accounts/admin.py:143
+#: accounts/admin.py:156
 msgid "This role is a Django superuser: full access to /admin/ (D-27)."
 msgstr "Ce rôle est un superutilisateur Django : accès complet à /admin/ (D-27)."
 
@@ -112,7 +112,7 @@ msgstr "Trop de tentatives. Réessaie dans %(minutes)s minutes."
 msgid "Wrong login or password, or this account has no access."
 msgstr "Identifiant ou mot de passe incorrect, ou ce compte n'a pas accès."
 
-#: accounts/models.py:64 templates/accounts/profile.html:94
+#: accounts/models.py:64 templates/accounts/profile.html:101
 msgid "Display language"
 msgstr "Langue d'affichage"
 
@@ -124,7 +124,7 @@ msgstr "Clair"
 msgid "Dark"
 msgstr "Sombre"
 
-#: accounts/models.py:77 templates/accounts/profile.html:99
+#: accounts/models.py:77 templates/accounts/profile.html:106
 msgid "Theme"
 msgstr "Thème"
 
@@ -172,40 +172,283 @@ msgstr "Changement de visibilité"
 msgid "Profile saved."
 msgstr "Profil enregistré."
 
-#: badges/admin.py:60
+#: badges/admin.py:26
+msgid "Leave empty to keep the wording shipped with the project, translated. What you type here is used at this school only."
+msgstr "Laisse vide pour garder le texte livré avec le projet, traduit. Ce que tu écris ici ne vaut que dans cet établissement."
+
+#: badges/admin.py:28
+msgid "Leave empty to keep the shipped wording."
+msgstr "Laisse vide pour garder le texte livré avec le projet."
+
+#: badges/admin.py:29
+msgid "Unticking hides it from the award screen. It keeps the badges already given -- deleting it would not."
+msgstr "Décoché, il n'apparaît plus à la remise. Les badges déjà remis sont conservés — les supprimer les effacerait."
+
+#: badges/admin.py:81
 msgid "Decided elsewhere"
 msgstr "Décidé ailleurs"
 
-#: badges/forms.py:25
+#: badges/catalog.py:36
+msgid "Network"
+msgstr "Réseau"
+
+#: badges/catalog.py:37
+msgid "Workstation"
+msgstr "Poste de travail"
+
+#: badges/catalog.py:38
+msgid "Presentation equipment"
+msgstr "Vidéoprojection"
+
+#: badges/catalog.py:39
+#| msgid "Printer"
+msgid "Printing"
+msgstr "Impression"
+
+#: badges/catalog.py:40
+msgid "Workshop and inventory"
+msgstr "Atelier & inventaire"
+
+#: badges/catalog.py:41
+msgid "Diagnosis and method"
+msgstr "Diagnostic & méthode"
+
+#: badges/catalog.py:54
+msgid "Bronze"
+msgstr "Bronze"
+
+#: badges/catalog.py:54
+msgid "Silver"
+msgstr "Argent"
+
+#: badges/catalog.py:54
+msgid "Gold"
+msgstr "Or"
+
+#: badges/catalog.py:80
+msgid "Network · Beginner"
+msgstr "Réseau · Débutant"
+
+#: badges/catalog.py:81
+msgid "You say whether the fault is at the machine or at the socket: another cable, another machine, and you describe what you see."
+msgstr "Tu dis si la panne vient du poste ou de la prise : un autre câble, un autre poste — et tu décris ce que tu observes."
+
+#: badges/catalog.py:83
+msgid "Network · Advanced"
+msgstr "Réseau · Confirmé"
+
+#: badges/catalog.py:84
+msgid "You follow a line from the socket to the patch panel, find the dead socket and swap a patch cable."
+msgstr "Tu suis une liaison de la prise jusqu'au panneau de brassage, tu trouves la prise morte et tu remplaces un cordon."
+
+#: badges/catalog.py:86
+msgid "Network · Pro"
+msgstr "Réseau · Expert"
+
+#: badges/catalog.py:87
+msgid "You recognise a fault that reaches beyond one workstation, and hand it on precisely enough that it can be acted on without new tests."
+msgstr "Tu reconnais une panne qui dépasse un seul poste, et tu la transmets assez précisément pour qu'on agisse sans refaire les tests."
+
+#: badges/catalog.py:90
+msgid "Workstation · Beginner"
+msgstr "Poste de travail · Débutant"
+
+#: badges/catalog.py:91
+msgid "You replace a device at a workstation and check the whole place afterwards."
+msgstr "Tu remplaces un appareil au poste de travail, et tu vérifies ensuite tout le poste."
+
+#: badges/catalog.py:93
+msgid "Workstation · Advanced"
+msgstr "Poste de travail · Confirmé"
+
+#: badges/catalog.py:94
+msgid "You open a machine, replace a component, put it back together and test it."
+msgstr "Tu ouvres une machine, tu remplaces un composant, tu la remontes et tu la testes."
+
+#: badges/catalog.py:96
+msgid "Workstation · Pro"
+msgstr "Poste de travail · Expert"
+
+#: badges/catalog.py:97
+msgid "You set up a complete workstation, sync it and hand it over ready to use."
+msgstr "Tu montes un poste complet, tu le synchronises et tu le livres prêt à l'usage."
+
+#: badges/catalog.py:100
+msgid "Presentation equipment · Beginner"
+msgstr "Vidéoprojection · Débutant"
+
+#: badges/catalog.py:101
+msgid "You get the picture back: source, cable, input."
+msgstr "Tu rétablis l'image : source, câble, entrée."
+
+#: badges/catalog.py:102
+msgid "Presentation equipment · Advanced"
+msgstr "Vidéoprojection · Confirmé"
+
+#: badges/catalog.py:103
+msgid "You set resolution and sound, and find a cable that only fails now and then."
+msgstr "Tu règles la résolution et le son, et tu trouves un câble qui ne lâche que par moments."
+
+#: badges/catalog.py:105
+msgid "Presentation equipment · Pro"
+msgstr "Vidéoprojection · Expert"
+
+#: badges/catalog.py:106
+msgid "You mount or realign a projector and bring a whole room back into service."
+msgstr "Tu installes ou réalignes un vidéoprojecteur, et tu remets une salle entière en service."
+
+#: badges/catalog.py:109
+msgid "Printing · Beginner"
+msgstr "Impression · Débutant"
+
+#: badges/catalog.py:110
+msgid "Paper, toner, a simple jam: you get the printer running again and check it with a real printout."
+msgstr "Papier, toner, bourrage simple : tu remets l'imprimante en marche et tu vérifies avec une vraie impression."
+
+#: badges/catalog.py:112
+msgid "Printing · Advanced"
+msgstr "Impression · Confirmé"
+
+#: badges/catalog.py:113
+msgid "A stuck queue, one machine that no longer prints while the others do, a jam deep inside."
+msgstr "File d'attente bloquée, un poste qui n'imprime plus alors que les autres impriment, un bourrage au fond de la machine."
+
+#: badges/catalog.py:115
+msgid "Printing · Pro"
+msgstr "Impression · Expert"
+
+#: badges/catalog.py:116
+msgid "You tell the printer apart from the print server, and say what you have already ruled out."
+msgstr "Tu distingues l'imprimante du serveur d'impression, et tu dis ce que tu as déjà écarté."
+
+#: badges/catalog.py:119
+msgid "Workshop and inventory · Beginner"
+msgstr "Atelier & inventaire · Débutant"
+
+#: badges/catalog.py:120
+msgid "You label a device and enter it in the inventory: number, room, condition."
+msgstr "Tu étiquettes un appareil et tu le saisis dans l'inventaire : numéro, salle, état."
+
+#: badges/catalog.py:122
+msgid "Workshop and inventory · Advanced"
+msgstr "Atelier & inventaire · Confirmé"
+
+#: badges/catalog.py:123
+msgid "You make new computers and tablets ready for service, and record what was never in the inventory — switches, access points."
+msgstr "Tu prépares des ordinateurs et des tablettes neufs pour la mise en service, et tu relèves ce qui n'a jamais été inventorié — switchs, points d'accès."
+
+#: badges/catalog.py:125
+msgid "Workshop and inventory · Pro"
+msgstr "Atelier & inventaire · Expert"
+
+#: badges/catalog.py:126
+msgid "You retire a device properly: wipe the disk, remove what identifies the school, and write down that you did both."
+msgstr "Tu sors un appareil du parc dans les règles : effacer le disque, retirer ce qui identifie l'école — et noter les deux."
+
+#: badges/catalog.py:129
+msgid "Diagnosis and method · Beginner"
+msgstr "Diagnostic & méthode · Débutant"
+
+#: badges/catalog.py:130
+msgid "You reproduce the fault before touching anything, and describe what you see."
+msgstr "Tu reproduis la panne avant de toucher à quoi que ce soit, et tu décris ce que tu observes."
+
+#: badges/catalog.py:132
+msgid "Diagnosis and method · Advanced"
+msgstr "Diagnostic & méthode · Confirmé"
+
+#: badges/catalog.py:133
+msgid "You test the whole workstation once more before closing, and write the solution down for whoever comes next."
+msgstr "Tu retestes tout le poste avant de fermer, et tu écris la solution pour les suivants."
+
+#: badges/catalog.py:135
+msgid "Diagnosis and method · Pro"
+msgstr "Diagnostic & méthode · Expert"
+
+#: badges/catalog.py:136
+msgid "You take over a ticket whose first lead was wrong, and find the real cause."
+msgstr "Tu reprends un ticket dont la première piste était fausse, et tu trouves la vraie cause."
+
+#: badges/catalog.py:139
+msgid "First solved ticket"
+msgstr "Premier ticket résolu"
+
+#: badges/catalog.py:140
+msgid "Your first fault, from the report all the way to the hand-over."
+msgstr "Ta première panne, du signalement jusqu'à la remise du poste."
+
+#: badges/catalog.py:141
+msgid "Well explained"
+msgstr "Bien expliqué"
+
+#: badges/catalog.py:142
+msgid "You handed the workstation back and explained what had happened — so that it was understood."
+msgstr "Tu as rendu le poste en expliquant ce qui s'était passé — de façon à être compris."
+
+#: badges/catalog.py:144
+msgid "Always there"
+msgstr "Toujours là"
+
+#: badges/catalog.py:145
+msgid "You are in the workshop regularly over a long stretch, whatever the faults happen to be."
+msgstr "Tu es à l'atelier régulièrement sur la durée, quelles que soient les pannes du moment."
+
+#: badges/forms.py:26
 msgid "What they did, in the words you would say to them."
 msgstr "Ce que cette personne a fait, avec les mots que tu lui dirais."
 
-#: badges/forms.py:62
+#: badges/forms.py:67
 msgid "No particular ticket"
 msgstr "Aucun ticket en particulier"
 
-#: badges/forms.py:71
+#: badges/forms.py:76
 msgid "They already hold this badge."
 msgstr "Cette personne a déjà ce badge."
 
-#: badges/forms.py:95
+#: badges/forms.py:100
 msgid "First complete install"
 msgstr "Première installation complète"
 
-#: badges/forms.py:99
+#: badges/forms.py:104
 msgid "What has to be done to earn it."
 msgstr "Ce qu'il faut faire pour le mériter."
 
-#: badges/forms.py:116
+#: badges/forms.py:123
+msgid "Earned once"
+msgstr "Remis une seule fois"
+
+#: badges/forms.py:124
+#, python-format
+msgid "Level %(level)d"
+msgstr "Niveau %(level)d"
+
+#: badges/forms.py:127
+msgid "Level"
+msgstr "Niveau"
+
+#: badges/forms.py:133
 msgid "A badge by that name already exists."
 msgstr "Un badge portant ce nom existe déjà."
 
-#: badges/views.py:63
+#: badges/models.py:34
+msgid "Name"
+msgstr "Nom"
+
+#: badges/models.py:35 templates/tickets/detail.html:413
+#: templates/tickets/form.html:83
+msgid "Description"
+msgstr "Description"
+
+#: badges/models.py:44
+msgid "Offered"
+msgstr "Proposé"
+
+#: badges/views.py:73
 #, python-format
 msgid "Badge “%(name)s” created."
 msgstr "Badge « %(name)s » créé."
 
-#: badges/views.py:94
+#: badges/views.py:104
 msgid "Badge awarded."
 msgstr "Badge attribué."
 
@@ -403,7 +646,7 @@ msgstr "Les comptes sont ajoutés par un enseignant. Il n'y a pas d'inscription.
 #: templates/accounts/profile.html:9 templates/badges/catalog.html:9
 #: templates/base.html:17 templates/notifications/list.html:9
 #: templates/tickets/detail.html:9 templates/tickets/form.html:9
-#: templates/tickets/list.html:4 tickets/admin.py:50
+#: templates/tickets/list.html:4 tickets/admin.py:69
 msgid "Tickets"
 msgstr "Tickets"
 
@@ -417,40 +660,40 @@ msgstr "Plus inscrit"
 msgid "Badges"
 msgstr "Badges"
 
-#: templates/accounts/profile.html:60
+#: templates/accounts/profile.html:67
 msgid "the intervention"
 msgstr "l'intervention"
 
-#: templates/accounts/profile.html:69
+#: templates/accounts/profile.html:76
 msgid "No badge yet. They are awarded by a teacher, one repair at a time."
 msgstr "Pas encore de badge. Ils sont attribués par un enseignant, une réparation à la fois."
 
-#: templates/accounts/profile.html:71 templates/badges/catalog.html:62
+#: templates/accounts/profile.html:78 templates/badges/catalog.html:76
 msgid "No badge yet."
 msgstr "Pas encore de badge."
 
-#: templates/accounts/profile.html:81 templates/badges/award.html:4
-#: templates/badges/award.html:16 templates/badges/catalog.html:93
+#: templates/accounts/profile.html:88 templates/badges/award.html:4
+#: templates/badges/award.html:16 templates/badges/catalog.html:107
 msgid "Award a badge"
 msgstr "Attribuer un badge"
 
-#: templates/accounts/profile.html:91
+#: templates/accounts/profile.html:98
 msgid "Display"
 msgstr "Affichage"
 
-#: templates/accounts/profile.html:104
+#: templates/accounts/profile.html:111
 msgid "Both are kept with your account, so they follow you to another phone."
 msgstr "Les deux sont conservés avec ton compte, ils te suivent donc sur un autre téléphone."
 
-#: templates/accounts/profile.html:107
+#: templates/accounts/profile.html:114
 msgid "Notifications on my devices"
 msgstr "Notifications sur mes appareils"
 
-#: templates/accounts/profile.html:121
+#: templates/accounts/profile.html:128
 msgid "Unticking one stops the push, not the notification: it still appears in your list."
 msgstr "Décocher arrête le push, pas la notification : elle reste dans ta liste."
 
-#: templates/accounts/profile.html:124 templates/tickets/detail.html:331
+#: templates/accounts/profile.html:131 templates/tickets/detail.html:331
 #: templates/tickets/detail.html:368 templates/tickets/detail.html:420
 msgid "Save"
 msgstr "Enregistrer"
@@ -492,7 +735,11 @@ msgstr "Attribuer"
 msgid "What exists and how it is earned. Who holds what is on each person's profile — there is no ranking here, and there will not be one."
 msgstr "Ce qui existe et comment on le mérite. Qui a quoi est sur le profil de chacun — il n'y a pas de classement ici, et il n'y en aura pas."
 
-#: templates/badges/catalog.html:42
+#: templates/badges/catalog.html:46
+msgid "Not offered"
+msgstr "Non proposé"
+
+#: templates/badges/catalog.html:56
 #, python-format
 msgid ""
 "\n"
@@ -509,19 +756,19 @@ msgstr[1] ""
 "\n"
 "attribué %(count)s fois"
 
-#: templates/badges/catalog.html:53
+#: templates/badges/catalog.html:67
 msgid "Shared"
 msgstr "Partagé"
 
-#: templates/badges/catalog.html:70
+#: templates/badges/catalog.html:84
 msgid "Create a badge"
 msgstr "Créer un badge"
 
-#: templates/badges/catalog.html:83
+#: templates/badges/catalog.html:97
 msgid "It belongs to this school only. Shared badges are a project-wide decision, because they have to be translated."
 msgstr "Il n'appartient qu'à cette école. Les badges partagés sont une décision du projet, parce qu'ils doivent être traduits."
 
-#: templates/badges/catalog.html:86
+#: templates/badges/catalog.html:100
 msgid "Create"
 msgstr "Créer"
 
@@ -761,10 +1008,6 @@ msgstr "Salle"
 #: templates/tickets/detail.html:404 templates/tickets/form.html:90
 msgid "Priority"
 msgstr "Priorité"
-
-#: templates/tickets/detail.html:413 templates/tickets/form.html:83
-msgid "Description"
-msgstr "Description"
 
 #: templates/tickets/detail.html:459 templates/tickets/form.html:111
 #: tickets/forms.py:127
@@ -1116,4 +1359,3 @@ msgstr "Visibilité mise à jour."
 #: tickets/views.py:611
 msgid "Photo removed."
 msgstr "Photo supprimée."
-

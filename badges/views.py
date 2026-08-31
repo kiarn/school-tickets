@@ -30,6 +30,17 @@ from .forms import AwardForm, BadgeForm
 from .models import Badge
 
 
+def _catalog_for(is_admin):
+    """Ordered by the ladder, and shorn of what is not on offer.
+
+    A badge switched off is not advertised to the people who could earn it --
+    that is what switching it off means. An admin sees it, because they are
+    the one who has to be able to switch it back on.
+    """
+    badges = Badge.objects.all()
+    return badges if is_admin else badges.filter(is_active=True)
+
+
 def _admin_or_404(user):
     if Role(user.role) not in ADMIN_ROLES:
         # 404 and never 403, as everywhere else in this application.
@@ -39,8 +50,8 @@ def _admin_or_404(user):
 @login_required
 def catalog(request):
     """What exists and how it is earned. Nothing about people."""
-    badges = Badge.objects.order_by("-is_catalog", "category", "name")
     is_admin = Role(request.user.role) in ADMIN_ROLES
+    badges = _catalog_for(is_admin)
     return render(request, "badges/catalog.html", {
         "badges": badges,
         "is_admin": is_admin,
@@ -55,9 +66,8 @@ def badge_create(request):
         return redirect("badges:catalog")
     form = BadgeForm(request.POST)
     if not form.is_valid():
-        badges = Badge.objects.order_by("-is_catalog", "category", "name")
         return render(request, "badges/catalog.html", {
-            "badges": badges, "is_admin": True, "form": form,
+            "badges": _catalog_for(True), "is_admin": True, "form": form,
         })
     badge = form.save()
     messages.success(request, _("Badge “%(name)s” created.") % {"name": badge.label})

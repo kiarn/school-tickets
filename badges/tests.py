@@ -218,31 +218,58 @@ class BadgeAdminTests(TestCase):
         page = self.client.get(reverse("admin:badges_badge_add"))
         self.assertEqual(
             list(page.context["adminform"].form.fields),
-            ["name", "description", "icon", "category"],
+            ["name", "description", "icon", "is_active"],
         )
 
     def test_a_badge_made_here_is_never_shared(self):
         self.client.post(
             reverse("admin:badges_badge_add"),
-            {"name": "Werkstatt-Helfer", "description": "", "icon": "", "category": ""},
+            {"name": "Werkstatt-Helfer", "description": "", "icon": "", "is_active": "on"},
         )
         badge = Badge.objects.get(name="Werkstatt-Helfer")
         self.assertFalse(badge.is_catalog)
         self.assertEqual(badge.slug, "werkstatt-helfer")
 
-    def test_a_catalogue_badge_is_read_only_except_its_tally(self):
+    def test_a_catalogue_badge_keeps_its_identity_and_lends_its_words(self):
         adminform = self.client.get(
             reverse("admin:badges_badge_change", args=[self.catalog.pk])
         ).context["adminform"]
         readonly = adminform.model_admin.get_readonly_fields(None, self.catalog)
-        # Its name is the msgid the .po files are keyed on: editing it here
-        # would silently orphan every translation of it.
-        for field in ("name", "description", "is_catalog", "slug"):
+        # The identity, and the ladder the project defines it in. Renaming a
+        # rung here used to orphan its translations; it cannot any more, since
+        # the shipped text is keyed on the slug -- which is exactly why the
+        # slug, and not the name, is what stays locked.
+        for field in ("slug", "is_catalog", "family", "level"):
             self.assertIn(field, readonly)
-        self.assertNotIn("award_count", readonly)
+        for field in ("name", "description", "is_active", "award_count"):
+            self.assertNotIn(field, readonly)
         # `school` is not among them and is not on the page either: the column
         # itself is gone since D-49.
         self.assertNotIn("school", adminform.form.fields)
+
+    def test_renaming_a_catalogue_badge_is_local_and_reversible(self):
+        """The whole reason the lock could be lifted.
+
+        The shipped text is found by slug, so an override changes what this
+        school reads and nothing else -- and emptying the field brings the
+        translated wording back, rather than leaving a hole.
+        """
+        # Already there: the catalogue arrives with the code, so the data
+        # migration put it in this database as it would in a new install.
+        badge = Badge.objects.get(slug="network-1")
+        self.assertEqual(badge.label, "Network · Beginner")
+        self.assertEqual(badge.name, "")
+
+        badge.name = "Kabelfuchs"
+        self.assertEqual(badge.label, "Kabelfuchs")
+
+        badge.name = ""
+        self.assertEqual(badge.label, "Network · Beginner")
+
+    def test_a_badge_whose_slug_left_the_catalogue_still_draws(self):
+        """A later version may drop a rung. The awards made under it happened."""
+        badge = Badge.objects.create(slug="withdrawn-rung", is_catalog=True)
+        self.assertEqual(badge.label, "withdrawn-rung")
 
     def test_a_locally_made_badge_keeps_its_text_editable(self):
         adminform = self.client.get(
@@ -251,9 +278,18 @@ class BadgeAdminTests(TestCase):
         self.assertNotIn("name", adminform.model_admin.get_readonly_fields(None, self.own))
         self.assertNotIn("school", adminform.form.fields)
 
-    def test_two_badges_may_not_share_a_name(self):
+    def test_the_identity_is_the_slug_and_names_may_now_repeat(self):
+        """`name` used to be unique, back when it was the identity.
+
+        It is an override now, blank on nearly every row, and MariaDB gives us
+        no conditional index (D-03): a unique one would have collided on the
+        second empty name.
+        """
+        Badge.objects.create(slug="hdmi-again", name="HDMI")
+        self.assertEqual(Badge.objects.filter(name="HDMI").count(), 2)
+
         with self.assertRaises(IntegrityError):
-            Badge.objects.create(slug="hdmi-again", name="HDMI")
+            Badge.objects.create(slug="hdmi-again", name="Something else")
 
 
 class BadgeAwardAdminTests(TestCase):

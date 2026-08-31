@@ -21,56 +21,73 @@ from .models import Badge, BadgeAward
 class BadgeAdminForm(forms.ModelForm):
     class Meta:
         model = Badge
-        fields = ["name", "description", "icon", "category", "award_count"]
+        fields = ["name", "description", "icon", "is_active", "order", "award_count"]
+        help_texts = {
+            "name": _("Leave empty to keep the wording shipped with the project, "
+                      "translated. What you type here is used at this school only."),
+            "description": _("Leave empty to keep the shipped wording."),
+            "is_active": _("Unticking hides it from the award screen. It keeps the "
+                           "badges already given -- deleting it would not."),
+        }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # The column is `blank=True` because `label` falls back on the slug for
-        # robustness, not because a nameless badge is a thing to create: the
-        # slug is derived from the name, and an empty one derives nothing.
-        #
-        # Absent on a catalogue badge, whose every text field is read-only and
-        # therefore not on the form at all.
+        # Required only where it is the badge's own name. On a catalogue badge
+        # it is an override, and empty is its normal state -- that is what
+        # makes the customisation reversible.
+        shipped = self.instance.pk and self.instance.is_catalog
         if "name" in self.fields:
-            self.fields["name"].required = True
+            self.fields["name"].required = not shipped
 
 
 @admin.register(Badge)
 class BadgeAdmin(admin.ModelAdmin):
-    """Locally invented badges. The catalogue is read here, never written.
+    """Where a school makes the catalogue its own.
 
-    ``is_catalog`` is not offered at all -- the same refusal `BadgeForm` makes,
-    for the same reason. Left editable, it let somebody flag a badge as
-    catalogue from here, which then surfaced in the catalogue untranslated.
+    It used to be a locked screen. A catalogue badge's `name` **was** the
+    `msgid` the .po files were keyed on, so renaming one here did not fail --
+    it silently orphaned every translation of it, and the only way out was to
+    invent a local badge, which was then never translated at all (D-15).
+
+    Keying the shipped text on the slug instead turned the two text fields
+    into overrides, and the lock into an ordinary form: what is typed here
+    stays here, and clearing a field brings the translated text back.
+
+    ``is_catalog`` is still not offered. A shared badge means a string in the
+    Crowdin catalogues, which is a decision about the project rather than
+    about one afternoon in one establishment -- and a row flagged from here
+    would surface in the catalogue with no shipped text behind its slug.
     """
 
     form = BadgeAdminForm
-    list_display = ("name", "slug", "is_catalog", "category", "award_count")
-    list_filter = ("is_catalog", "category")
+    list_display = ("__str__", "slug", "family", "level", "is_active", "award_count")
+    list_filter = ("is_catalog", "is_active", "family")
+    list_editable = ("is_active",)
     search_fields = ("slug", "name")
-    ordering = ("-is_catalog", "category", "name")
 
     # award_count is editable on purpose, catalogue badge included: it is a
     # tally, and a tally occasionally needs a human correction (R-17).
-    _own = ("name", "description", "icon", "category", "award_count")
+    _own = ("name", "description", "icon", "family", "level", "is_active",
+            "order", "award_count")
     _read = ("slug", "is_catalog", "created_at")
+    # The ladder's structure belongs to the project on the badges it ships: a
+    # rung moved to another family here would part company with the catalogue
+    # that defines it, and nothing would say so. A badge invented here owns
+    # its own structure, so these stay editable on it.
+    _shipped_structure = ("family", "level")
 
     fieldsets = (
         (None, {"fields": _own}),
         (_("Decided elsewhere"), {"fields": _read}),
     )
-    add_fieldsets = ((None, {"fields": ("name", "description", "icon", "category")}),)
+    add_fieldsets = ((None, {"fields": ("name", "description", "icon", "is_active")}),)
 
     def get_fieldsets(self, request, obj=None):
         return self.add_fieldsets if obj is None else self.fieldsets
 
     def get_readonly_fields(self, request, obj=None):
         if obj is not None and obj.is_catalog:
-            # Its `name` and `description` are the `msgid`s the .po files are
-            # keyed on. Editing one here does not translate it and does not
-            # fail either -- it silently orphans every translation of it.
-            # The tally is the exception: it counts what was done here.
-            return self._read + ("name", "description", "icon", "category")
+            return self._read + self._shipped_structure
         return self._read
 
     def save_model(self, request, obj, form, change):

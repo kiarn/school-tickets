@@ -41,7 +41,14 @@
                 <span class="text-2xl leading-none shrink-0"
                       aria-hidden="true">{{ award.badge.icon|default:"★" }}</span>
                 <div class="min-w-0 flex flex-col gap-1">
-                    <span class="font-medium break-words">{{ award.badge.label }}</span>
+                    <span class="flex flex-wrap items-center gap-2">
+                        <span class="font-medium break-words">{{ award.badge.label }}</span>
+                        {% if award.badge.metal %}
+                            <span class="badge badge-sm badge-{{ award.badge.metal }}">
+                                {{ award.badge.metal_label }}
+                            </span>
+                        {% endif %}
+                    </span>
                     {% if award.badge.summary %}
                         <span class="text-xs opacity-70 break-words">{{ award.badge.summary }}</span>
                     {% endif %}

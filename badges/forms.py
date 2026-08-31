@@ -9,6 +9,7 @@ from accounts.authz import WORKING_ROLES
 from accounts.models import User
 from tickets.models import Ticket
 
+from .catalog import METALS
 from .models import Badge, BadgeAward
 
 
@@ -30,7 +31,11 @@ class AwardForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.awarded_by = awarded_by
 
-        self.fields["badge"].queryset = Badge.objects.order_by("-is_catalog", "name")
+        # Only what is on offer: a badge switched off in /admin is one this
+        # school has decided not to give, and the list is where that decision
+        # takes effect. Ordered by the ladder rather than by the name, or the
+        # rungs would come back in alphabetical German.
+        self.fields["badge"].queryset = Badge.objects.filter(is_active=True)
         self.fields["badge"].widget.attrs.update({"class": "select w-full"})
 
         # Reporters are not in the list: a badge recognises a repair (D-10),
@@ -89,7 +94,7 @@ class BadgeForm(forms.ModelForm):
 
     class Meta:
         model = Badge
-        fields = ["name", "description", "icon", "category"]
+        fields = ["name", "description", "icon", "family", "level"]
         widgets = {
             "name": forms.TextInput(attrs={
                 "class": "input w-full", "placeholder": _("First complete install"),
@@ -101,14 +106,26 @@ class BadgeForm(forms.ModelForm):
             "icon": forms.TextInput(attrs={
                 "class": "input w-full", "placeholder": "🛠",
             }),
-            "category": forms.TextInput(attrs={"class": "input w-full"}),
+            "family": forms.Select(attrs={"class": "select w-full"}),
+            "level": forms.Select(attrs={"class": "select w-full"}),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["description"].required = False
         self.fields["icon"].required = False
-        self.fields["category"].required = False
+        # A badge invented here may join a shipped ladder rather than stand on
+        # its own -- a school that wants a fourth rung on one of them should
+        # not have to reinvent the other three.
+        self.fields["family"].required = False
+        self.fields["level"] = forms.TypedChoiceField(
+            required=False, coerce=int, empty_value=0, initial=0,
+            choices=[(0, _("Earned once"))] + [
+                (level, _("Level %(level)d") % {"level": level}) for level in METALS
+            ],
+            widget=forms.Select(attrs={"class": "select w-full"}),
+            label=_("Level"),
+        )
 
     def clean_name(self):
         name = self.cleaned_data["name"]

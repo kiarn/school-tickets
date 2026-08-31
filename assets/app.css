@@ -257,3 +257,65 @@ textarea {
     color: var(--color-base-content);
     box-shadow: none;
 }
+
+/* --- The three metals -------------------------------------------------------
+ *
+ * A rung's rank, read by colour before it is read as a word. Deliberately not
+ * added to `Tag.Color`: that list is daisyUI's semantic palette, whose whole
+ * property is that the theme knows how to keep each name readable in both
+ * modes. Bronze, silver and gold are fixed hues with no semantics behind them,
+ * so they are written out here for the two themes rather than borrowed from a
+ * name that means something else.
+ *
+ * Soft fills, never solid, for the reason `Tag.badge_class` already gives: a
+ * row of saturated chips competes with the priority badge, which is the one
+ * thing on a card that has to be read first.
+ *
+ * Silver has almost no chroma on purpose -- a grey chip is what silver looks
+ * like -- so it leans on lightness alone to part company with the surface: 93%
+ * against the 100% card in light, 33% against the 29% card in dark.
+ */
+.badge-bronze,
+.badge-silver,
+.badge-gold {
+    border: var(--border, 1px) solid;
+}
+
+:root .badge-bronze,
+[data-theme="light"] .badge-bronze {
+    background-color: oklch(92% 0.04 60);
+    border-color: oklch(80% 0.07 60);
+    color: oklch(40% 0.09 60);
+}
+
+:root .badge-silver,
+[data-theme="light"] .badge-silver {
+    background-color: oklch(93% 0.005 250);
+    border-color: oklch(82% 0.01 250);
+    color: oklch(40% 0.012 250);
+}
+
+:root .badge-gold,
+[data-theme="light"] .badge-gold {
+    background-color: oklch(93% 0.06 90);
+    border-color: oklch(82% 0.1 90);
+    color: oklch(42% 0.1 85);
+}
+
+[data-theme="dark"] .badge-bronze {
+    background-color: oklch(32% 0.05 60);
+    border-color: oklch(45% 0.06 60);
+    color: oklch(85% 0.07 60);
+}
+
+[data-theme="dark"] .badge-silver {
+    background-color: oklch(33% 0.008 250);
+    border-color: oklch(46% 0.012 250);
+    color: oklch(88% 0.01 250);
+}
+
+[data-theme="dark"] .badge-gold {
+    background-color: oklch(33% 0.06 90);
+    border-color: oklch(47% 0.08 90);
+    color: oklch(88% 0.09 90);
+}

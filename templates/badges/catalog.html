@@ -28,8 +28,20 @@
                         <span class="text-sm opacity-70 break-words">{{ badge.summary }}</span>
                     {% endif %}
                     <span class="flex flex-wrap gap-1.5 mt-1">
-                        {% if badge.category %}
-                            <span class="badge badge-outline badge-sm">{{ badge.category }}</span>
+                        {% comment %} The rank, at a glance and by colour. The name already
+                           carries the family and the rung in words, so this says what the
+                           name cannot: how far up the ladder it is. {% endcomment %}
+                        {% if badge.metal %}
+                            <span class="badge badge-sm badge-{{ badge.metal }}">
+                                {{ badge.metal_label }}
+                            </span>
+                        {% endif %}
+                        {% if not badge.is_active %}
+                            {% comment %} Only an admin sees these at all: the view hides
+                               them from everyone else. {% endcomment %}
+                            <span class="badge badge-outline badge-sm opacity-70">
+                                {% translate "Not offered" %}
+                            </span>
                         {% endif %}
                         {% comment %} A tally, never a ranking: how many times a badge has
                            been earned says nothing about who holds it (D-10,
