@@ -1,5 +1,28 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""The worker's three jobs and their windows. See D-20."""
+"""The worker's four jobs: how often each comes round, and when it may run.
+
+A cadence and a window are not the same thing. ``every`` says how often a job
+comes back; the window says whether it is allowed to do anything when it does.
+They are separate because the reason differs for each job (D-20):
+
+``refresh`` -- every 30s, no window. The web service is forbidden from calling
+lmnapi at all, so "refresh now" cannot be a request: the page writes
+``refresh_requested_at`` and waits for the worker to notice. Thirty seconds is
+what makes that button feel like a button.
+
+``notify`` -- its own window, and pointedly not the estate's. It answers "may
+a notification reach somebody's phone right now", which is a different
+question from "are the machines on"; sharing one window would silence the
+evening instructions the application exists to carry.
+
+``linbo`` -- hourly, open hours only. A workstation that is switched off
+reports no LINBO state, and reading that absence as a fault would post an
+estate of false alarms every night and all weekend.
+
+``inventory`` -- nightly, out of hours. A full snapshot of every room and
+machine, and the one pass that can queue decisions for a human; nothing about
+it is urgent enough to spend a school day on.
+"""
 
 import logging
 from dataclasses import dataclass, field

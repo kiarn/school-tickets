@@ -154,7 +154,11 @@ ST_LOGO = os.environ.get("ST_LOGO", "")
 ST_SITE_SHORT_NAME = os.environ.get("ST_SITE_SHORT_NAME", "") or ST_SITE_NAME
 
 # --- Worker (D-20) -----------------------------------------------------------
-# Cadences in seconds. Deferred as configurable: see specs/01-decisions.md.
+# Cadences in seconds, and every one of them configurable on purpose: a school
+# that re-images every night and one that re-images once a term do not want the
+# same numbers. ``parc/jobs.py`` says what each job does with its cadence and
+# why it runs when it does. ``TICK`` is the loop's own pulse, not a cadence:
+# it only decides how promptly a job that has come due is noticed.
 ST_WORKER_TICK = int(os.environ.get("ST_WORKER_TICK", "5"))
 ST_WORKER_REFRESH_EVERY = int(os.environ.get("ST_WORKER_REFRESH_EVERY", "30"))
 ST_WORKER_LINBO_EVERY = int(os.environ.get("ST_WORKER_LINBO_EVERY", "3600"))
