@@ -61,6 +61,9 @@ TEMPLATES = [
                 "notifications.context_processors.unread",
                 # Name and crest, needed before login as much as after (D-30).
                 "school_tickets.branding.identity",
+                # Whether the menu offers the estate. No query -- the role is
+                # already on the request.
+                "parc.context_processors.estate_access",
             ],
         },
     },

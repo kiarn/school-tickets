@@ -102,6 +102,12 @@
                 class="dropdown-content menu bg-base-100 rounded-box z-40 mt-2 w-56 p-2 shadow">
                 <li class="menu-title truncate">{{ user.display_name|default:user.cn }}</li>
                 <li><a href="{% url 'accounts:profile' %}">{% translate "My profile" %}</a></li>
+                {% comment %} Only for those who repair, and the link is hidden rather
+                   than left to 404: an entry that always refuses teaches the
+                   reader to distrust the menu. {% endcomment %}
+                {% if can_see_estate %}
+                    <li><a href="{% url 'parc:estate' %}">{% translate "Machines" %}</a></li>
+                {% endif %}
                 <li><a href="{% url 'badges:catalog' %}">{% translate "Badges" %}</a></li>
                 {% comment %} The two forms live outside the list, and the buttons reach
                    them through form="...". A <form> inside a <ul> is invalid,

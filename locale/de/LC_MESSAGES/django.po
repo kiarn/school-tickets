@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: school-tickets\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-10 22:43+0200\n"
+"POT-Creation-Date: 2026-09-10 22:55+0200\n"
 "PO-Revision-Date: 2026-08-25 13:00+0200\n"
 "Last-Translator: \n"
 "Language-Team: German\n"
@@ -418,7 +418,7 @@ msgstr "Name"
 msgid "First complete install"
 msgstr "Erste komplette Installation"
 
-#: badges/forms.py:110 templates/tickets/detail.html:480
+#: badges/forms.py:110 templates/tickets/detail.html:426
 #: templates/tickets/form.html:83
 msgid "Description"
 msgstr "Beschreibung"
@@ -636,6 +636,10 @@ msgstr "Angewendet"
 msgid "Dismissed"
 msgstr "Verworfen"
 
+#: parc/views.py:130 tickets/views.py:414
+msgid "Asked for a fresh reading of this machine."
+msgstr "Eine Abfrage dieses Geräts wurde angefordert."
+
 #: templates/accounts/login.html:4 templates/accounts/login.html:46
 msgid "Sign in"
 msgstr "Anmelden"
@@ -650,8 +654,9 @@ msgstr "Konten legt eine Lehrkraft an. Es gibt nichts zu registrieren."
 
 #: templates/accounts/profile.html:9 templates/badges/catalog.html:9
 #: templates/base.html:17 templates/notifications/list.html:9
-#: templates/tickets/detail.html:9 templates/tickets/form.html:9
-#: templates/tickets/list.html:4 tickets/admin.py:69
+#: templates/parc/estate.html:9 templates/tickets/detail.html:9
+#: templates/tickets/form.html:9 templates/tickets/list.html:4
+#: tickets/admin.py:69
 msgid "Tickets"
 msgstr "Tickets"
 
@@ -661,7 +666,7 @@ msgstr "Nicht mehr eingetragen"
 
 #: templates/accounts/profile.html:38 templates/badges/award.html:9
 #: templates/badges/catalog.html:4 templates/badges/catalog.html:12
-#: templates/base.html:115
+#: templates/base.html:122
 msgid "Badges"
 msgstr "Abzeichen"
 
@@ -698,8 +703,8 @@ msgstr "Benachrichtigungen auf meinen Geräten"
 msgid "Unticking one stops the push, not the notification: it still appears in your list."
 msgstr "Wenn du eines abwählst, stoppt das den Push, nicht die Benachrichtigung: sie steht weiter in deiner Liste."
 
-#: templates/accounts/profile.html:131 templates/tickets/detail.html:398
-#: templates/tickets/detail.html:435 templates/tickets/detail.html:487
+#: templates/accounts/profile.html:131 templates/tickets/detail.html:344
+#: templates/tickets/detail.html:381 templates/tickets/detail.html:433
 msgid "Save"
 msgstr "Speichern"
 
@@ -786,15 +791,20 @@ msgstr "Benachrichtigungen"
 msgid "My profile"
 msgstr "Mein Profil"
 
-#: templates/base.html:124
+#: templates/base.html:120 templates/parc/estate.html:4
+#: templates/parc/estate.html:12 templates/parc/room.html:9
+msgid "Machines"
+msgstr "Geräte"
+
+#: templates/base.html:131
 msgid "Light theme"
 msgstr "Helles Design"
 
-#: templates/base.html:126
+#: templates/base.html:133
 msgid "Dark theme"
 msgstr "Dunkles Design"
 
-#: templates/base.html:130
+#: templates/base.html:137
 msgid "Sign out"
 msgstr "Abmelden"
 
@@ -838,6 +848,77 @@ msgstr "Dieses Gerät konnte nicht angemeldet werden."
 msgid "Notifications are unavailable in this browser."
 msgstr "Benachrichtigungen sind in diesem Browser nicht verfügbar."
 
+#: templates/parc/_linbo_state.html:15
+msgid "Last synchronised"
+msgstr "Letzte Synchronisierung"
+
+#: templates/parc/_linbo_state.html:16 templates/tickets/_ticket_card.html:92
+#, python-format
+msgid "%(age)s ago"
+msgstr "vor %(age)s"
+
+#: templates/parc/_linbo_state.html:21
+msgid "behind"
+msgstr "im Rückstand"
+
+#: templates/parc/_linbo_state.html:27
+#, python-format
+msgid "checked %(age)s ago"
+msgstr "abgefragt vor %(age)s"
+
+#: templates/parc/_linbo_state.html:35
+#, python-format
+msgid "No news of this machine for %(age)s"
+msgstr "Seit %(age)s keine Rückmeldung von diesem Gerät"
+
+#: templates/parc/_linbo_state.html:37 templates/parc/_linbo_state.html:46
+msgid "This machine has never been checked"
+msgstr "Dieses Gerät wurde noch nie abgefragt"
+
+#: templates/parc/_linbo_state.html:42
+msgid "No synchronisation information for this machine"
+msgstr "Keine Synchronisierungsinformationen für dieses Gerät"
+
+#: templates/parc/_linbo_state.html:58
+msgid "Fresh reading requested"
+msgstr "Abfrage angefordert"
+
+#: templates/parc/_linbo_state.html:62
+msgid "Check again"
+msgstr "Erneut abfragen"
+
+#: templates/parc/device.html:27 templates/parc/room.html:36
+msgid "Does not boot over the network"
+msgstr "Startet nicht über das Netzwerk"
+
+#: templates/parc/device.html:39
+msgid "Address"
+msgstr "Adresse"
+
+#: templates/parc/device.html:43
+msgid "Group"
+msgstr "Gruppe"
+
+#: templates/parc/device.html:54
+msgid "Tickets on this machine"
+msgstr "Tickets zu diesem Gerät"
+
+#: templates/parc/device.html:68
+msgid "Nothing has been reported on this machine."
+msgstr "Zu diesem Gerät wurde nichts gemeldet."
+
+#: templates/parc/estate.html:29
+msgid "%(known)s of %(total)s known"
+msgstr "%(known)s von %(total)s bekannt"
+
+#: templates/parc/estate.html:35
+msgid "No machine has been synchronised into this instance yet."
+msgstr "Es wurde noch kein Gerät in diese Instanz synchronisiert."
+
+#: templates/parc/room.html:42
+msgid "No machine in this room."
+msgstr "Kein Gerät in diesem Raum."
+
 #: templates/tickets/_device_options.html:5 tickets/forms.py:107
 msgid "No particular machine"
 msgstr "Kein bestimmtes Gerät"
@@ -866,11 +947,6 @@ msgstr "Normale Priorität"
 #: templates/tickets/_ticket_card.html:81
 msgid "No note says what worked."
 msgstr "Keine Notiz sagt, was geholfen hat."
-
-#: templates/tickets/_ticket_card.html:92 templates/tickets/detail.html:225
-#, python-format
-msgid "%(age)s ago"
-msgstr "vor %(age)s"
 
 #: templates/tickets/detail.html:57 templates/tickets/detail.html:58
 msgid "Correct"
@@ -907,58 +983,24 @@ msgstr "Sichtbarkeit"
 msgid "Widening publishes every comment and photo already in this thread."
 msgstr "Eine Erweiterung veröffentlicht alle Notizen und Fotos, die schon in diesem Verlauf stehen."
 
-#: templates/tickets/detail.html:199 templates/tickets/detail.html:595
+#: templates/tickets/detail.html:199 templates/tickets/detail.html:541
 msgid "edited"
 msgstr "bearbeitet"
 
-#: templates/tickets/detail.html:205 templates/tickets/detail.html:465
+#: templates/tickets/detail.html:205 templates/tickets/detail.html:411
 #: templates/tickets/form.html:70
 msgid "Machine"
 msgstr "Gerät"
 
-#: templates/tickets/detail.html:224
-msgid "Last synchronised"
-msgstr "Letzte Synchronisierung"
-
-#: templates/tickets/detail.html:231
-msgid "behind"
-msgstr "im Rückstand"
-
-#: templates/tickets/detail.html:237
-#, python-format
-msgid "checked %(age)s ago"
-msgstr "abgefragt vor %(age)s"
-
-#: templates/tickets/detail.html:246
-#, python-format
-msgid "No news of this machine for %(age)s"
-msgstr "Seit %(age)s keine Rückmeldung von diesem Gerät"
-
-#: templates/tickets/detail.html:248 templates/tickets/detail.html:257
-msgid "This machine has never been checked"
-msgstr "Dieses Gerät wurde noch nie abgefragt"
-
-#: templates/tickets/detail.html:253
-msgid "No synchronisation information for this machine"
-msgstr "Keine Synchronisierungsinformationen für dieses Gerät"
-
-#: templates/tickets/detail.html:270
-msgid "Fresh reading requested"
-msgstr "Abfrage angefordert"
-
-#: templates/tickets/detail.html:274
-msgid "Check again"
-msgstr "Erneut abfragen"
-
-#: templates/tickets/detail.html:299 templates/tickets/form.html:97
+#: templates/tickets/detail.html:245 templates/tickets/form.html:97
 msgid "Tags"
 msgstr "Schlagwörter"
 
-#: templates/tickets/detail.html:301
+#: templates/tickets/detail.html:247
 msgid "Add a tag"
 msgstr "Schlagwort hinzufügen"
 
-#: templates/tickets/detail.html:309
+#: templates/tickets/detail.html:255
 #, python-format
 msgid ""
 "\n"
@@ -968,7 +1010,7 @@ msgstr ""
 "\n"
 "Von %(who)s eröffnet, vor %(age)s"
 
-#: templates/tickets/detail.html:314
+#: templates/tickets/detail.html:260
 #, python-format
 msgid ""
 "\n"
@@ -985,87 +1027,87 @@ msgstr[1] ""
 "\n"
 "%(count)s-mal wieder geöffnet"
 
-#: templates/tickets/detail.html:337
+#: templates/tickets/detail.html:283
 msgid "On it"
 msgstr "Kümmert sich darum"
 
-#: templates/tickets/detail.html:341
+#: templates/tickets/detail.html:287
 msgid "Change"
 msgstr "Ändern"
 
-#: templates/tickets/detail.html:349
+#: templates/tickets/detail.html:295
 msgid "Put it back"
 msgstr "Wieder freigeben"
 
-#: templates/tickets/detail.html:354
+#: templates/tickets/detail.html:300
 msgid "I am on it"
 msgstr "Ich mache das"
 
-#: templates/tickets/detail.html:374
+#: templates/tickets/detail.html:320
 msgid "Nobody yet."
 msgstr "Noch niemand."
 
-#: templates/tickets/detail.html:383
+#: templates/tickets/detail.html:329
 msgid "Who is on this ticket"
 msgstr "Wer sich um dieses Ticket kümmert"
 
-#: templates/tickets/detail.html:397 templates/tickets/detail.html:434
-#: templates/tickets/detail.html:486 templates/tickets/list.html:182
+#: templates/tickets/detail.html:343 templates/tickets/detail.html:380
+#: templates/tickets/detail.html:432 templates/tickets/list.html:182
 msgid "Cancel"
 msgstr "Abbrechen"
 
-#: templates/tickets/detail.html:402 templates/tickets/detail.html:439
-#: templates/tickets/detail.html:491 templates/tickets/list.html:187
+#: templates/tickets/detail.html:348 templates/tickets/detail.html:385
+#: templates/tickets/detail.html:437 templates/tickets/list.html:187
 msgid "Close"
 msgstr "Schließen"
 
-#: templates/tickets/detail.html:409
+#: templates/tickets/detail.html:355
 msgid "How this one is filed"
 msgstr "Wie das hier einsortiert ist"
 
-#: templates/tickets/detail.html:411
+#: templates/tickets/detail.html:357
 msgid "What the fault turned out to be, not what it looked like."
 msgstr "Was der Fehler wirklich war, nicht wonach es aussah."
 
-#: templates/tickets/detail.html:429
+#: templates/tickets/detail.html:375
 msgid "No tag exists yet."
 msgstr "Es gibt noch kein Schlagwort."
 
-#: templates/tickets/detail.html:450
+#: templates/tickets/detail.html:396
 msgid "Correct this ticket"
 msgstr "Ticket korrigieren"
 
-#: templates/tickets/detail.html:452
+#: templates/tickets/detail.html:398
 msgid "Where the fault is, what it says, and how much it can wait."
 msgstr "Wo die Störung ist, was sie sagt und wie lange sie warten kann."
 
-#: templates/tickets/detail.html:459 templates/tickets/form.html:36
+#: templates/tickets/detail.html:405 templates/tickets/form.html:36
 #: templates/tickets/list.html:150
 msgid "Room"
 msgstr "Raum"
 
-#: templates/tickets/detail.html:471 templates/tickets/form.html:90
+#: templates/tickets/detail.html:417 templates/tickets/form.html:90
 msgid "Priority"
 msgstr "Priorität"
 
-#: templates/tickets/detail.html:526 templates/tickets/form.html:111
+#: templates/tickets/detail.html:472 templates/tickets/form.html:111
 #: tickets/forms.py:127
 msgid "Photos"
 msgstr "Fotos"
 
-#: templates/tickets/detail.html:533
+#: templates/tickets/detail.html:479
 msgid "What has already been tried"
 msgstr "Was schon probiert wurde"
 
-#: templates/tickets/detail.html:549
+#: templates/tickets/detail.html:495
 msgid "What worked"
 msgstr "Was geholfen hat"
 
-#: templates/tickets/detail.html:551
+#: templates/tickets/detail.html:497
 msgid "What worked last time"
 msgstr "Was letztes Mal geholfen hat"
 
-#: templates/tickets/detail.html:558
+#: templates/tickets/detail.html:504
 #, python-format
 msgid ""
 "\n"
@@ -1075,32 +1117,32 @@ msgstr ""
 "\n"
 "notiert von %(who)s"
 
-#: templates/tickets/detail.html:572
+#: templates/tickets/detail.html:518
 msgid "Closed, but no note says what worked. Mark the one that does."
 msgstr "Geschlossen, aber keine Notiz sagt, was geholfen hat. Markiere die richtige."
 
-#: templates/tickets/detail.html:574
+#: templates/tickets/detail.html:520
 msgid "Closed, but no note says what worked."
 msgstr "Geschlossen, aber keine Notiz sagt, was geholfen hat."
 
-#: templates/tickets/detail.html:617 templates/tickets/detail.html:620
+#: templates/tickets/detail.html:563 templates/tickets/detail.html:566
 msgid "Unmark"
 msgstr "Markierung entfernen"
 
-#: templates/tickets/detail.html:618 templates/tickets/detail.html:623
+#: templates/tickets/detail.html:564 templates/tickets/detail.html:569
 #: tickets/models.py:114
 msgid "Resolution"
 msgstr "Lösung"
 
-#: templates/tickets/detail.html:639 templates/tickets/detail.html:640
+#: templates/tickets/detail.html:585 templates/tickets/detail.html:586
 msgid "This is what worked"
 msgstr "Das hat geholfen"
 
-#: templates/tickets/detail.html:656
+#: templates/tickets/detail.html:602
 msgid "No note yet."
 msgstr "Noch keine Notiz."
 
-#: templates/tickets/detail.html:670
+#: templates/tickets/detail.html:616
 msgid "Add a note"
 msgstr "Notiz hinzufügen"
 
@@ -1359,47 +1401,43 @@ msgstr "Farbe"
 msgid "Leave empty for a plain outline."
 msgstr "Leer lassen für eine schlichte Umrandung."
 
-#: tickets/views.py:288
+#: tickets/views.py:297
 msgid "Ticket opened."
 msgstr "Ticket eröffnet."
 
-#: tickets/views.py:383
+#: tickets/views.py:392
 msgid "Status updated."
 msgstr "Status aktualisiert."
 
-#: tickets/views.py:405
-msgid "Asked for a fresh reading of this machine."
-msgstr "Eine Abfrage dieses Geräts wurde angefordert."
-
-#: tickets/views.py:459
+#: tickets/views.py:468
 msgid "Assignments updated."
 msgstr "Zuweisungen aktualisiert."
 
-#: tickets/views.py:495
+#: tickets/views.py:504
 msgid "Tags updated."
 msgstr "Schlagwörter aktualisiert."
 
-#: tickets/views.py:535
+#: tickets/views.py:544
 msgid "Marked as what worked."
 msgstr "Als das markiert, was geholfen hat."
 
-#: tickets/views.py:541
+#: tickets/views.py:550
 msgid "Resolution mark removed."
 msgstr "Lösungsmarkierung entfernt."
 
-#: tickets/views.py:573
+#: tickets/views.py:582
 msgid "Correction refused: check the room and the machine."
 msgstr "Korrektur abgelehnt: Prüfe Raum und Gerät."
 
-#: tickets/views.py:586
+#: tickets/views.py:595
 msgid "Ticket corrected."
 msgstr "Ticket korrigiert."
 
-#: tickets/views.py:610
+#: tickets/views.py:619
 msgid "Visibility updated."
 msgstr "Sichtbarkeit aktualisiert."
 
-#: tickets/views.py:663
+#: tickets/views.py:672
 msgid "Photo removed."
 msgstr "Foto entfernt."
 

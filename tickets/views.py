@@ -30,6 +30,7 @@ from django.db import transaction
 from django.db.models import Case, IntegerField, Prefetch, Q, When
 from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.translation import gettext as _
 from django.views.decorators.http import require_POST
@@ -240,6 +241,14 @@ def ticket_detail(request, pk):
             # still worth asking about -- but only to whoever may press, since
             # a block offering nothing and no action is just an empty panel.
             "show_linbo": bool(linbo_applies and (linbo or can_work_on(request.user))),
+            # The shared block posts wherever its caller says. From here the
+            # request comes back to this ticket; from the estate, to the
+            # machine's own page.
+            "device_refresh_url": (
+                reverse("tickets:device_refresh", args=[ticket.pk])
+                if ticket.device_id
+                else ""
+            ),
             "comment_form": CommentForm(),
             "can_work": can_work_on(request.user),
             "can_reopen": may_correct,

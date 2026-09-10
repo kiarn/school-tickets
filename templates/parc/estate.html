@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block title %}{% translate "Machines" %}{% endblock %}
+
+{% block content %}
+
+<a href="{% url 'tickets:list' %}" class="btn btn-ghost btn-sm mb-2 -ms-2">
+    ← {% translate "Tickets" %}
+</a>
+
+<h1 class="text-xl font-semibold mb-3">{% translate "Machines" %}</h1>
+
+{% comment %} Rooms with no PXE machine are not listed at all. A room of printers has
+   nothing to ask about, and "0 of 0" beside its name would invite worry where
+   there is none (doc 05). {% endcomment %}
+<ul class="menu bg-base-100 rounded-box shadow-sm w-full p-2">
+    {% for room in rooms %}
+        <li>
+            <a href="{% url 'parc:room' room.pk %}" class="flex items-center justify-between gap-3">
+                <span class="truncate">{{ room.name }}</span>
+                {% comment %} A count, not a verdict. How many of the room's machines we
+                   currently hold a reading for -- which says as much about the
+                   worker as about the estate, and is why it is phrased as
+                   "known" rather than as "healthy". {% endcomment %}
+                <span class="text-xs opacity-60 shrink-0">
+                    {% blocktranslate with known=room.known total=room.machines %}{{ known }} of {{ total }} known{% endblocktranslate %}
+                </span>
+            </a>
+        </li>
+    {% empty %}
+        <li class="p-3 text-sm opacity-60">
+            {% translate "No machine has been synchronised into this instance yet." %}
+        </li>
+    {% endfor %}
+</ul>
+
+{% endblock %}

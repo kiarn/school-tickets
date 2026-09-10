@@ -8,11 +8,13 @@ that disagree with the PXE flag. Every one of those broke something.
 """
 
 import json
+from datetime import timedelta
 from pathlib import Path
 from unittest.mock import patch
 
-from django.db import IntegrityError
+from django.db import IntegrityError, connection
 from django.test import TestCase, SimpleTestCase, override_settings
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 
@@ -675,3 +677,153 @@ class HostStatusTests(TestCase):
         self.assertFalse(
             DeviceStatus.objects.filter(refresh_requested_at__isnull=False).exists()
         )
+
+
+class EstateViewTests(TestCase):
+    """The estate seen by a person. A work tool, and open to those who work.
+
+    Doc 04 asks that surfaces be minimised; this one opens no wider than its
+    use. A refusal is a 404 like every other refusal in this application, so
+    the answer never distinguishes "not for you" from "does not exist".
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.room = Room.objects.create(name="204")
+        cls.empty_room = Room.objects.create(name="Corridor")
+        cls.pxe = Device.objects.create(
+            room=cls.room, mac="48:5b:39:0b:2e:c2", hostname="dienst05", pxe=1
+        )
+        cls.printer = Device.objects.create(
+            room=cls.empty_room, mac="48:5b:39:0b:2e:c3", hostname="drucker4", pxe=0
+        )
+        cls.member = User.objects.enroll(cn="lea", role=Role.MEMBER, display_name="Lea")
+        cls.reporter = User.objects.enroll(
+            cn="max", role=Role.REPORTER, display_name="Max"
+        )
+
+    def test_a_reporter_reaches_none_of_it(self):
+        self.client.force_login(self.reporter)
+        for name, args in (
+            ("parc:estate", []),
+            ("parc:room", [self.room.pk]),
+            ("parc:device", [self.pxe.pk]),
+        ):
+            with self.subTest(name=name):
+                self.assertEqual(self.client.get(reverse(name, args=args)).status_code, 404)
+
+    def test_a_reporter_is_not_offered_the_link(self):
+        """Hidden rather than left to refuse: a menu entry that always says no
+        teaches the reader to distrust the menu."""
+        self.client.force_login(self.reporter)
+        response = self.client.get(reverse("tickets:list"))
+        self.assertNotContains(response, reverse("parc:estate"))
+
+    def test_whoever_repairs_is_offered_the_link(self):
+        self.client.force_login(self.member)
+        response = self.client.get(reverse("tickets:list"))
+        self.assertContains(response, reverse("parc:estate"))
+
+    def test_a_room_with_nothing_to_ask_is_not_listed(self):
+        """A room of printers is not a room with nothing to report.
+
+        It is a room with nothing to *ask*, and "0 of 0" beside its name would
+        invite the reader to worry about it (doc 05).
+        """
+        self.client.force_login(self.member)
+        response = self.client.get(reverse("parc:estate"))
+        self.assertContains(response, "204")
+        self.assertNotContains(response, "Corridor")
+
+    def test_the_estate_counts_without_a_query_per_room(self):
+        """Forty rooms must not cost forty queries to draw one page."""
+        for n in range(10):
+            room = Room.objects.create(name=f"R{n}")
+            Device.objects.create(
+                room=room, mac=f"aa:bb:cc:dd:ee:{n:02x}", hostname=f"pc{n}", pxe=1
+            )
+        self.client.force_login(self.member)
+        with CaptureQueriesContext(connection) as queries:
+            self.client.get(reverse("parc:estate"))
+        # Session, user, the annotated room query, the unread count: a handful
+        # that does not grow with the estate.
+        self.assertLess(len(queries), 10)
+
+    def test_a_room_shows_each_machine_with_its_state(self):
+        now = timezone.now()
+        DeviceStatus.objects.create(
+            device=self.pxe,
+            fetch_status=DeviceStatus.FetchStatus.OK,
+            last_linbo_sync_at=now - timedelta(days=3),
+            linbo_image="jammy.qcow2",
+            observed_at=now - timedelta(minutes=5),
+        )
+        self.client.force_login(self.member)
+        response = self.client.get(reverse("parc:room", args=[self.room.pk]))
+        self.assertContains(response, "dienst05")
+        self.assertContains(response, "Last synchronised")
+        self.assertContains(response, "checked")
+
+    def test_a_room_offers_no_refresh_button_per_row(self):
+        """A row of buttons invites pressing every one, and each press is a
+        call on the school's server. The request lives on the machine's page."""
+        self.client.force_login(self.member)
+        response = self.client.get(reverse("parc:room", args=[self.room.pk]))
+        self.assertNotContains(response, "Check again")
+
+    def test_a_machine_that_does_not_boot_over_the_network_says_so(self):
+        """Not a gap in the data, and it must not read as one."""
+        self.client.force_login(self.member)
+        response = self.client.get(reverse("parc:room", args=[self.empty_room.pk]))
+        self.assertContains(response, "Does not boot over the network")
+        self.assertNotContains(response, "never been checked")
+
+    def test_the_machine_page_carries_the_request(self):
+        self.client.force_login(self.member)
+        response = self.client.get(reverse("parc:device", args=[self.pxe.pk]))
+        self.assertContains(response, "dienst05")
+        self.assertContains(response, "Check again")
+
+    def test_pressing_queues_the_machine(self):
+        self.client.force_login(self.member)
+        response = self.client.post(reverse("parc:device_refresh", args=[self.pxe.pk]))
+        self.assertEqual(response.status_code, 302)
+        self.assertIsNotNone(
+            DeviceStatus.objects.get(device=self.pxe).refresh_requested_at
+        )
+
+    def test_a_printer_cannot_be_asked_about(self):
+        self.client.force_login(self.member)
+        response = self.client.post(
+            reverse("parc:device_refresh", args=[self.printer.pk])
+        )
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(DeviceStatus.objects.exists())
+
+    def test_a_reporter_cannot_press_either(self):
+        self.client.force_login(self.reporter)
+        response = self.client.post(reverse("parc:device_refresh", args=[self.pxe.pk]))
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(DeviceStatus.objects.exists())
+
+    def test_reaching_a_machine_does_not_open_threads_doc_08_keeps_shut(self):
+        """The estate must not become a side door into a ticket.
+
+        A member may not read an admins-only ticket, and finding it through
+        the machine it was filed against changes nothing about that.
+        """
+        from tickets.models import Ticket
+        from accounts.authz import Visibility
+
+        # Authored by somebody else: `visible_to` lets an author keep sight of
+        # their own report whatever its floor, so a ticket of one's own would
+        # prove nothing here.
+        boss = User.objects.enroll(cn="chief", role=Role.ADMIN, display_name="Chief")
+        Ticket.objects.create(
+            room=self.room, device=self.pxe, room_label="204",
+            title="Secret matter", description="...",
+            visibility=Visibility.ADMINS, created_by=boss,
+        )
+        self.client.force_login(self.member)
+        response = self.client.get(reverse("parc:device", args=[self.pxe.pk]))
+        self.assertNotContains(response, "Secret matter")

@@ -20,5 +20,6 @@ urlpatterns = [
     path("", include("accounts.urls")),
     path("", include("badges.urls")),
     path("", include("notifications.urls")),
+    path("", include("parc.urls")),
     path("", include("tickets.urls")),
 ]

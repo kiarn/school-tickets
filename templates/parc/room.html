@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block title %}{{ room.name }}{% endblock %}
+
+{% block content %}
+
+<a href="{% url 'parc:estate' %}" class="btn btn-ghost btn-sm mb-2 -ms-2">
+    ← {% translate "Machines" %}
+</a>
+
+<h1 class="text-xl font-semibold mb-3">{{ room.name }}</h1>
+
+{% comment %} The scanning view: one line per machine, read down rather than opened one
+   by one. No refresh button here on purpose -- a row of them invites pressing
+   every one, and each press is a call on the school's server. The request lives
+   on the machine's own page, where somebody has already decided to look.
+   {% endcomment %}
+<ul class="flex flex-col gap-2">
+    {% for device in devices %}
+        <li class="card bg-base-100 shadow-sm">
+            <a href="{% url 'parc:device' device.pk %}" class="card-body p-3 gap-1">
+                <div class="flex items-baseline justify-between gap-2">
+                    <span class="font-medium truncate">{{ device.hostname }}</span>
+                    <span class="font-mono text-xs opacity-60 shrink-0">{{ device.mac }}</span>
+                </div>
+                <div class="text-sm opacity-70">
+                    {% if device.expects_linbo %}
+                        {% include "parc/_linbo_state.html" with linbo=device.status refresh_url="" %}
+                    {% else %}
+                        {% comment %} Not a gap in the data: this machine does not boot over
+                           PXE, so it has no LINBO state to be missing (doc 05).
+                           {% endcomment %}
+                        <span class="text-xs opacity-60">{% translate "Does not boot over the network" %}</span>
+                    {% endif %}
+                </div>
+            </a>
+        </li>
+    {% empty %}
+        <li class="p-3 text-sm opacity-60">{% translate "No machine in this room." %}</li>
+    {% endfor %}
+</ul>
+
+{% endblock %}
