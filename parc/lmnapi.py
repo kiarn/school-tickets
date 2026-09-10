@@ -80,18 +80,27 @@ class Client:
             raise LmnApiError(f"unreachable: {exc.reason}") from exc
 
     # --- Business entry points ----------------------------------------------
-    # Exact paths still to be confirmed: Q-03 is narrowed to display semantics,
-    # but the URLs themselves have not been read yet.
+    # Paths taken from the server's own OpenAPI document (lmn 7.4.11), not
+    # guessed. What that document does NOT give is the shape of the response
+    # bodies: both are declared as a bare object, so Q-03 stays open until one
+    # real answer has been read.
 
     def inventory(self, school: str):
-        """Full snapshot of the estate -- rooms and devices."""
-        return self.get("/v1/devices", {"school": school})
+        """Full snapshot of the estate -- rooms and devices.
 
-    def linbo_status_all(self, school: str):
+        The school is a path segment, not a query parameter.
+        """
+        return self.get(f"/v1/devices/list/{urllib.parse.quote(school)}")
+
+    def linbo_status_all(self):
         """LINBO state for the whole estate, in one collective call.
+
+        Takes no school: the endpoint scopes itself from the role bound to the
+        key server side -- a school-administrator only ever sees their own
+        hosts. Nothing to pass, and nothing we could widen by passing it.
 
         Every row must carry the **MAC** next to the hostname: school-tickets
         addresses the API by what lmn can name, but files it under the MAC, the
-        only stable identity (doc 03, Q-03).
+        only stable identity (doc 03, Q-03). Unconfirmed on a real response.
         """
-        return self.get("/v1/linbo/status", {"school": school})
+        return self.get("/v1/linbo/hosts/image-status")

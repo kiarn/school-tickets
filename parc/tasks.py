@@ -1,13 +1,22 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Bodies of the worker jobs.
 
-State: **skeleton**. The loop, the cadences and the filing-by-MAC are the
-decided part (D-20); the exact shape of lmnapi responses is not (Q-03, the
-semantics of the timestamps). Each function returns a dict of counters, which
-the heartbeat records.
+The inventory pass is complete: ``GET /v1/devices/list/{school}`` has been read
+on a live lmn 7.4.11 and ``sources.rows_from_api`` is written against it.
+
+The LINBO sweep is not, and cannot be: ``GET /v1/linbo/hosts/image-status``
+keys its answer by hostname and carries no MAC, so there is nothing to file
+under (Q-03). ``_index_by_mac`` refuses rather than degrade -- see there for
+why silence would be the dangerous option. Two points of semantics are also
+still open: ``imageVersion`` was null on every row, and ``action`` was
+``applied`` on every row, so doc 05's question -- last successful sync, or
+last contact? -- is not settled either.
+
+Each function returns a dict of counters, which the heartbeat records.
 """
 
 import logging
+from datetime import datetime
 
 from django.conf import settings
 from django.utils import timezone
@@ -20,13 +29,56 @@ from parc.models import Device, DeviceStatus
 logger = logging.getLogger(__name__)
 
 
-def _index_by_mac(rows) -> dict:
+class LinboPayloadError(RuntimeError):
+    """The LINBO endpoint answered, but not with something we can file."""
+
+
+def _index_by_mac(response) -> dict:
     """The response is filed under the MAC, never under the key we sent.
 
     A hostname remembered at the last inventory sync may have changed since;
     the MAC has not (doc 03).
+
+    ``GET /v1/linbo/hosts/image-status`` answers
+    ``{"hosts": {hostname: {lastSync, action, image, imageVersion}}, "total": n}``
+    -- keyed by hostname, and **carrying no MAC**. That is the one thing Q-03
+    asked the API for and the one thing it does not yet give.
+
+    Raising here is the whole point. Filing by hostname instead would break
+    doc 03's rule; returning an empty index would be worse still, because
+    ``_write_status`` reads "no row" as "machine unreachable" and would post a
+    false alarm on every PXE machine in the estate, silently, on every sweep.
     """
-    return {row["mac"].lower(): row for row in rows if row.get("mac")}
+    hosts = response.get("hosts")
+    if not isinstance(hosts, dict):
+        raise LinboPayloadError(f"expected a 'hosts' object, got {list(response)}")
+
+    by_mac = {}
+    for hostname, entry in hosts.items():
+        mac = (entry.get("mac") or "").lower()
+        if not mac:
+            raise LinboPayloadError(
+                f"{hostname}: the LINBO response carries no MAC, so nothing can "
+                "be filed under one (specs/07, Q-03)"
+            )
+        by_mac[mac] = entry
+    return by_mac
+
+
+def _parse_last_sync(value):
+    """``"2026-08-07T14:40:00.000Z"`` -- a string, and an aware one.
+
+    A machine whose timestamp is unreadable is still a machine that answered:
+    losing the date is right, losing the row is not (same rule as a malformed
+    IP in ``sources``).
+    """
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except (TypeError, ValueError):
+        logger.warning("unreadable lastSync: %r", value)
+        return None
 
 
 def _write_status(by_mac: dict, *, macs=None) -> int:
@@ -48,7 +100,7 @@ def _write_status(by_mac: dict, *, macs=None) -> int:
             status.fetch_status = DeviceStatus.FetchStatus.UNREACHABLE
         else:
             status.fetch_status = DeviceStatus.FetchStatus.OK
-            status.last_linbo_sync_at = row.get("last_sync_at")
+            status.last_linbo_sync_at = _parse_last_sync(row.get("lastSync"))
             status.linbo_image = row.get("image") or ""
             status.raw = row
         status.observed_at = now
@@ -62,7 +114,7 @@ def sweep_linbo() -> dict:
     """One collective call for the whole estate, then filing by MAC."""
     client = Client()
     try:
-        response = client.linbo_status_all(school=settings.ST_DEFAULT_SCHOOL_SLUG)
+        response = client.linbo_status_all()
     except NotConfigured as exc:
         logger.warning("lmnapi not configured: %s", exc)
         return {"skipped": "not_configured"}
@@ -70,7 +122,7 @@ def sweep_linbo() -> dict:
         DeviceStatus.objects.update(fetch_status=DeviceStatus.FetchStatus.FORBIDDEN)
         raise
 
-    return {"devices": _write_status(_index_by_mac(response.get("devices", [])))}
+    return {"devices": _write_status(_index_by_mac(response))}
 
 
 def drain_refresh_queue() -> dict:
@@ -87,14 +139,7 @@ def drain_refresh_queue() -> dict:
 
 
 def sync_inventory() -> dict:
-    """Full snapshot from lmnapi, then the reconciliation of doc 03.
-
-    Blocked one step short of the end, and knowingly so: ``apply_inventory``
-    and the volume guard are written and tested, but ``rows_from_api`` cannot
-    be written without one real ``/v1/devices`` response (Q-03). Until then
-    the CSV path -- ``sync_parc --from-file`` -- exercises exactly the same
-    reconciliation code.
-    """
+    """Full snapshot from lmnapi, then the reconciliation of doc 03."""
     client = Client()
     try:
         payload = client.inventory(school=settings.ST_DEFAULT_SCHOOL_SLUG)
@@ -102,11 +147,18 @@ def sync_inventory() -> dict:
         logger.warning("lmnapi not configured: %s", exc)
         return {"skipped": "not_configured"}
 
-    try:
-        rows = sources.rows_from_api(payload)
-    except NotImplementedError as exc:
-        logger.warning("inventory sync held: %s", exc)
-        return {"skipped": "awaiting_api_shape"}
+    estate = sources.rows_from_api(payload)
 
-    run = apply_inventory(rows, source="lmnapi")
-    return {"status": run.status, "rooms": run.rooms_seen, "devices": run.devices_seen}
+    # What was dropped is logged rather than counted silently: a source that
+    # starts skipping rows is how an estate quietly shrinks, and the volume
+    # guard downstream only ever sees the survivors.
+    if estate.skipped:
+        logger.info("inventory: %d row(s) skipped %s", len(estate.skipped), estate.reasons())
+
+    run = apply_inventory(estate.rows, source="lmnapi")
+    return {
+        "status": run.status,
+        "rooms": run.rooms_seen,
+        "devices": run.devices_seen,
+        "skipped": estate.reasons(),
+    }

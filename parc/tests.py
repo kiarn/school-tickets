@@ -7,6 +7,7 @@ out to clear an address collision, ``---`` used as an empty marker, and roles
 that disagree with the PXE flag. Every one of those broke something.
 """
 
+import json
 from pathlib import Path
 
 from django.db import IntegrityError
@@ -28,6 +29,7 @@ from parc.models import (
 )
 
 SAMPLE = Path(__file__).parent / "testdata" / "devices-sample.csv"
+API_SAMPLE = Path(__file__).parent / "testdata" / "devices-api-sample.json"
 
 
 def parse_sample():
@@ -103,6 +105,71 @@ class ParserTests(SimpleTestCase):
         )
         # A bad address costs the address, never the machine.
         self.assertIsNone(estate.rows[1].ip)
+
+
+class ApiAdapterTests(SimpleTestCase):
+    """``devices-api-sample.json`` is the same estate as the CSV, read through
+    ``GET /v1/devices/list/{school}`` on a linuxmuster 7.4.11 test server.
+
+    Kept for the same reason as the CSV sample: it is awkward in exactly the
+    same ways, because the API re-exports the file line by line without
+    cleaning it.
+    """
+
+    def setUp(self):
+        self.estate = sources.rows_from_api(json.loads(API_SAMPLE.read_text()))
+
+    def test_the_two_sources_describe_the_same_estate(self):
+        """doc 03's whole premise, and the only test that really checks it.
+
+        The reconciliation must not be able to tell the sources apart. If one
+        day the CSV and the API disagree on a single machine, this is what has
+        to fail -- not a room quietly renamed in production.
+        """
+        csv_rows = {r.mac: r for r in parse_sample().rows}
+        api_rows = {r.mac: r for r in self.estate.rows}
+
+        self.assertEqual(sorted(csv_rows), sorted(api_rows))
+        for mac, csv_row in csv_rows.items():
+            api_row = api_rows[mac]
+            for f in ("room", "hostname", "group", "ip", "role", "pxe", "comment"):
+                self.assertEqual(
+                    getattr(csv_row, f),
+                    getattr(api_row, f),
+                    msg=f"{mac}: {f} differs between the two sources",
+                )
+
+    def test_comment_lines_leave_the_estate(self):
+        """``status`` names what the CSV made us detect by a leading ``#``.
+
+        Four lines, and the awkward one is ``#server;dockerhost``: a host
+        commented out to clear an address collision. It still carries a MAC,
+        an IP and a role, so nothing but ``status`` marks it as gone.
+        """
+        self.assertEqual(self.estate.reasons(), {"disabled": 4})
+        self.assertNotIn("#server", {r.room for r in self.estate.rows})
+        self.assertNotIn("dockerhost", {r.hostname for r in self.estate.rows})
+
+    def test_unregistered_machines_stay_in_the_estate(self):
+        """A router absent from the directory is still a router that breaks."""
+        self.assertIn("wlan-router", {r.hostname for r in self.estate.rows})
+
+    def test_mac_case_is_normalised(self):
+        for row in self.estate.rows:
+            self.assertEqual(row.mac, row.mac.lower())
+
+    def test_null_and_dashes_are_both_emptiness(self):
+        """The API mixes JSON ``null``, ``""`` and sophomorix's ``---``."""
+        self.assertEqual(
+            sources._api_value({"a": None, "b": "---", "c": " x "}, "a"), ""
+        )
+        self.assertEqual(sources._api_value({"b": "---"}, "b"), "")
+        self.assertEqual(sources._api_value({"c": " x "}, "c"), "x")
+
+    def test_a_payload_that_is_not_a_list_is_refused(self):
+        """An empty estate reads as "every machine disappeared"."""
+        with self.assertRaises(sources.LmnApiPayloadError):
+            sources.rows_from_api({"devices": []})
 
 
 class DeviceModelTests(TestCase):
@@ -426,10 +493,54 @@ class LinboSweepTests(TestCase):
     def test_a_swept_machine_carries_both_ages(self):
         device = Device.objects.filter(pxe__gt=0).first()
         tasks._write_status(
-            {device.mac: {"mac": device.mac, "last_sync_at": "2026-08-20T09:00:00Z"}}
+            {
+                device.mac: {
+                    "mac": device.mac,
+                    "lastSync": "2026-08-07T14:40:00.000Z",
+                    "action": "applied",
+                    "image": "data-jammy.qcow2",
+                    "imageVersion": None,
+                }
+            }
         )
         status = DeviceStatus.objects.get(device=device)
         self.assertEqual(status.fetch_status, DeviceStatus.FetchStatus.OK)
         self.assertIsNotNone(status.observed_at)
         self.assertIsNotNone(status.last_linbo_sync_at)
         self.assertLess(status.last_linbo_sync_at, timezone.now())
+        self.assertEqual(status.linbo_image, "data-jammy.qcow2")
+
+    def test_an_unreadable_timestamp_costs_the_date_not_the_machine(self):
+        device = Device.objects.filter(pxe__gt=0).first()
+        tasks._write_status({device.mac: {"mac": device.mac, "lastSync": "never"}})
+        status = DeviceStatus.objects.get(device=device)
+        self.assertEqual(status.fetch_status, DeviceStatus.FetchStatus.OK)
+        self.assertIsNone(status.last_linbo_sync_at)
+
+    def test_a_response_without_macs_is_refused_rather_than_filed(self):
+        """The estate-wide false alarm doc 05 forbids, caught at the door.
+
+        lmn 7.4.11 keys ``image-status`` by hostname and carries no MAC. An
+        empty index would sail straight through ``_write_status`` and mark
+        every PXE machine unreachable, quietly, on every sweep.
+        """
+        response = {
+            "hosts": {
+                "client1": {
+                    "lastSync": "2026-08-07T14:40:00.000Z",
+                    "action": "applied",
+                    "image": "data-jammy.qcow2",
+                    "imageVersion": None,
+                }
+            },
+            "total": 1,
+        }
+        with self.assertRaises(tasks.LinboPayloadError):
+            tasks._index_by_mac(response)
+
+    def test_a_response_carrying_macs_is_filed_under_them(self):
+        """What the sweep will do once lmnapi answers with a MAC (Q-03)."""
+        by_mac = tasks._index_by_mac(
+            {"hosts": {"client1": {"mac": "AA:BB:CC:DD:EE:01", "image": "win11.qcow2"}}}
+        )
+        self.assertEqual(list(by_mac), ["aa:bb:cc:dd:ee:01"])
