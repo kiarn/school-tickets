@@ -66,10 +66,10 @@ class RoomAdmin(admin.ModelAdmin):
 
 @admin.register(Device)
 class DeviceAdmin(ReadOnlyAdmin):
-    """Read-only, and Arnaud's objection is the whole reason (D-51).
+    """Read-only, and D-51 carries the whole reason.
 
-    "Modifier un device serait alors nécessaire après chaque sync" -- exactly:
-    ``room``, ``hostname``, ``ip``, ``sophomorix_group``, ``role``, ``pxe`` and
+    Editing a device would mean re-editing it after every sync: ``room``,
+    ``hostname``, ``ip``, ``sophomorix_group``, ``role``, ``pxe`` and
     ``is_active`` are **all rewritten on every pass**, so a correction typed
     here survives until the next hour and no longer. The only field the sync
     never touches is ``mac``, and that one must not be touched at all: it is

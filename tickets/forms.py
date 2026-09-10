@@ -257,7 +257,7 @@ class TicketCorrectionForm(SchoolScopedMixin, RoomAndDeviceMixin, forms.ModelFor
     again. Only the Django admin could touch them, which is to say: not the
     people standing in the corridor.
 
-    Four fields. The description joined them on Arnaud's request (D-42),
+    Four fields. The description joined them under D-42,
     reversing the rule this docstring used to carry: a description is dictated
     in a corridor and often wrong, and refusing to fix it left the wrong words
     at the top of the page for good. What it costs is recorded rather than

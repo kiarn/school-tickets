@@ -82,7 +82,7 @@
  *
  * daisyUI 5 ships `oklch(71% 0.194 13.428)` for `--color-error` in both
  * themes: #ff627d, a coral pink. Two objections, and only the first is a
- * matter of taste (Arnaud's, 2026-08-25 -- "trop rose").
+ * matter of taste -- it reads as pink rather than as an error.
  *
  * The second is measurable: at that lightness it gives **2.87:1 against white**,
  * so every `text-error` in the light theme -- ten of them, all form errors --
@@ -116,8 +116,7 @@
  * daisyUI paints `.chat-bubble` with `base-300`, which is right in the light
  * theme (94% page, 87% bubble) and wrong in the dark one: D-18 pushed the dark
  * `base-300` DOWN to 14% to make card borders read, so the bubble came out
- * *darker* than the 18.5% page behind it -- a hole rather than a shape
- * (Arnaud, 2026-08-25).
+ * *darker* than the 18.5% page behind it -- a hole rather than a shape.
  *
  * In dark the bubble takes `base-100`, the same surface as the cards: down
  * there a surface reads as raised by being lighter, which is the rule D-18
