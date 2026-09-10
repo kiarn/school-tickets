@@ -81,9 +81,9 @@ class Client:
 
     # --- Business entry points ----------------------------------------------
     # Paths taken from the server's own OpenAPI document (lmn 7.4.11), not
-    # guessed. What that document does NOT give is the shape of the response
-    # bodies: both are declared as a bare object, so Q-03 stays open until one
-    # real answer has been read.
+    # guessed -- and the response shapes, which that document leaves untyped,
+    # read from real answers rather than assumed. Samples of both live in
+    # ``parc/testdata/``.
 
     def inventory(self, school: str):
         """Full snapshot of the estate -- rooms and devices.
@@ -92,6 +92,28 @@ class Client:
         """
         return self.get(f"/v1/devices/list/{urllib.parse.quote(school)}")
 
+    def linbo_status_host(self, hostname: str, school: str, probe: bool = False):
+        """Everything lmn knows about one host, addressed by name.
+
+        This is the endpoint doc 05's rule was written for: it answers with the
+        **MAC** beside the hostname, so what we send is only an address and what
+        we file under is still the stable identity. A name that has been
+        reassigned since the last inventory is therefore *detected* here rather
+        than trusted.
+
+        ``images`` is one entry per image of the host's ``start.conf`` group,
+        each with the date it was last applied or ``null`` if it never was --
+        which is what makes "up to date" a question with an answer, and what
+        separates "never applied" from "no information".
+
+        ``probe`` contacts the machine to fill ``online`` and ``osState``, so
+        it belongs to an explicit human action and never to the worker's loop.
+        """
+        return self.get(
+            f"/v1/linbo/hosts/{urllib.parse.quote(hostname)}/status",
+            {"school": school, "probe": "true" if probe else "false"},
+        )
+
     def linbo_status_all(self):
         """LINBO state for the whole estate, in one collective call.
 
@@ -99,8 +121,9 @@ class Client:
         key server side -- a school-administrator only ever sees their own
         hosts. Nothing to pass, and nothing we could widen by passing it.
 
-        Every row must carry the **MAC** next to the hostname: school-tickets
-        addresses the API by what lmn can name, but files it under the MAC, the
-        only stable identity (doc 03, Q-03). Unconfirmed on a real response.
+        Answers ``{"hosts": {hostname: {...}}, "total": n}``, keyed by hostname
+        and carrying no MAC -- so this is the estate-wide sweep and nothing
+        else. When one machine's state is wanted precisely, and filed under the
+        identity doc 03 requires, ``linbo_status_host`` is the one to call.
         """
         return self.get("/v1/linbo/hosts/image-status")

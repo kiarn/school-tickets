@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: school-tickets\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-31 19:03+0200\n"
+"POT-Creation-Date: 2026-09-10 21:34+0200\n"
 "PO-Revision-Date: 2026-08-25 13:00+0200\n"
 "Last-Translator: \n"
 "Language-Team: French\n"
@@ -173,7 +173,6 @@ msgid "Profile saved."
 msgstr "Profil enregistré."
 
 #: badges/admin.py:44
-#| msgid "Leave empty to keep the wording shipped with the project, translated. What you type here is used at this school only."
 msgid "Leave empty to keep the wording shipped with the project, translated."
 msgstr "Laisse vide pour garder le texte livré avec le projet, traduit."
 
@@ -593,47 +592,47 @@ msgstr "Réservation IP seulement"
 msgid "Observed"
 msgstr "Observé"
 
-#: parc/models.py:133
-msgid "Unreachable"
-msgstr "Injoignable"
+#: parc/models.py:141
+msgid "No information"
+msgstr "Aucune information"
 
-#: parc/models.py:134
+#: parc/models.py:142
 msgid "Forbidden"
 msgstr "Interdit"
 
-#: parc/models.py:155
+#: parc/models.py:163
 msgid "Succeeded"
 msgstr "Réussi"
 
-#: parc/models.py:156
+#: parc/models.py:164
 msgid "Failed"
 msgstr "Échoué"
 
-#: parc/models.py:157
+#: parc/models.py:165
 msgid "Refused by the volume guard"
 msgstr "Refusé par le garde-fou de volume"
 
-#: parc/models.py:179
+#: parc/models.py:187
 msgid "Room disappeared"
 msgstr "Salle disparue"
 
-#: parc/models.py:180
+#: parc/models.py:188
 msgid "Suspected room rename"
 msgstr "Renommage de salle suspecté"
 
-#: parc/models.py:181
+#: parc/models.py:189
 msgid "Device disappeared"
 msgstr "Machine disparue"
 
-#: parc/models.py:184
+#: parc/models.py:192
 msgid "Pending"
 msgstr "En attente"
 
-#: parc/models.py:185
+#: parc/models.py:193
 msgid "Applied"
 msgstr "Appliqué"
 
-#: parc/models.py:186
+#: parc/models.py:194
 msgid "Dismissed"
 msgstr "Écarté"
 
@@ -1365,6 +1364,9 @@ msgstr "Visibilité mise à jour."
 #: tickets/views.py:611
 msgid "Photo removed."
 msgstr "Photo supprimée."
+
+#~ msgid "Unreachable"
+#~ msgstr "Injoignable"
 
 #~ msgid "Leave empty to keep the shipped wording."
 #~ msgstr "Laisse vide pour garder le texte livré avec le projet."

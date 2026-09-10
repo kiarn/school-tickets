@@ -111,7 +111,7 @@ class Device(models.Model):
         This is not a judgement on the machine, it is a fact about it: a device
         that does not boot over PXE has no LINBO state, so the absence of one
         means nothing. Without the distinction every printer, router, NAS and
-        server carries a permanent ``unreachable`` -- the false-alarm flood
+        server carries a permanent ``no_data`` -- the false-alarm flood
         doc 05 forbids.
 
         Read from the flag itself, never guessed from the role: on real estate
@@ -130,7 +130,15 @@ class DeviceStatus(models.Model):
 
     class FetchStatus(models.TextChoices):
         OK = "ok", _("Observed")
-        UNREACHABLE = "unreachable", _("Unreachable")
+        #: The sweep answered and carried nothing for this machine. It names
+        #: what was observed and stops there: *no information was found*.
+        #: Not "never synchronised" -- that would be a conclusion about the
+        #: machine, and the server cannot support it. A renamed host leaves
+        #: its log orphaned under the old name, a log can be purged, and a
+        #: machine can be known to lmn by a name we do not hold. All three
+        #: look identical from here, and only one of them is a machine that
+        #: never synced. Doc 05 asks for that distinction by name.
+        NO_DATA = "no_data", _("No information")
         FORBIDDEN = "forbidden", _("Forbidden")
 
     device = models.OneToOneField(Device, on_delete=models.CASCADE, related_name="status")

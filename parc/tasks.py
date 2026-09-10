@@ -4,17 +4,29 @@
 The inventory pass is complete: ``GET /v1/devices/list/{school}`` has been read
 on a live lmn 7.4.11 and ``sources.rows_from_api`` is written against it.
 
-The LINBO sweep is not, and cannot be: ``GET /v1/linbo/hosts/image-status``
-keys its answer by hostname and carries no MAC, so there is nothing to file
-under (Q-03). ``_index_by_mac`` refuses rather than degrade -- see there for
-why silence would be the dangerous option. Two points of semantics are also
-still open: ``imageVersion`` was null on every row, and ``action`` was
-``applied`` on every row, so doc 05's question -- last successful sync, or
-last contact? -- is not settled either.
+LINBO is read through two endpoints, and the difference is not a detail:
+
+``GET /v1/linbo/hosts/image-status`` -- the whole estate in one call, keyed by
+hostname and carrying no MAC. Used for the hourly sweep, where D-20's cost
+argument rules: 300 machines must not become 300 calls. Filed by hostname, with
+the benign risk that entails (see ``_index_by_hostname``).
+
+``GET /v1/linbo/hosts/{hostname}/status`` -- one machine, and it **carries the
+MAC**, so doc 05's rule ("address by what lmn can name, file under the MAC")
+can be applied as written. Used on demand, when somebody presses refresh on a
+machine they are looking at. It also answers per image, which is what makes
+"up to date" measurable and what separates "never applied" from "no
+information".
+
+Both answer UTC, and the two agree -- checked against a live server rather than
+assumed. ``_parse_last_sync`` accepts either serialisation an lmn may send, a
+trailing ``Z`` or an explicit ``+00:00``, so an instance running an older
+server is not left with unreadable dates.
 
 Each function returns a dict of counters, which the heartbeat records.
 """
 
+import collections
 import logging
 from datetime import datetime
 
@@ -23,7 +35,7 @@ from django.utils import timezone
 
 from parc import sources
 from parc.inventory import apply_inventory
-from parc.lmnapi import Client, Forbidden, NotConfigured
+from parc.lmnapi import Client, Forbidden, LmnApiError, NotConfigured
 from parc.models import Device, DeviceStatus
 
 logger = logging.getLogger(__name__)
@@ -33,40 +45,35 @@ class LinboPayloadError(RuntimeError):
     """The LINBO endpoint answered, but not with something we can file."""
 
 
-def _index_by_mac(response) -> dict:
-    """The response is filed under the MAC, never under the key we sent.
+def _index_by_hostname(response) -> dict:
+    """``{"hosts": {hostname: {lastSync, action, image, imageVersion}}, "total": n}``
 
-    A hostname remembered at the last inventory sync may have changed since;
-    the MAC has not (doc 03).
+    Keyed by hostname, and carrying no MAC -- and that is accepted rather than
+    fought. Doc 03's "file under the MAC" governs the **inventory**, where
+    mistaking one machine for another corrupts the referential and can detach
+    a ticket from its device. This regime writes ``device_status`` and nothing
+    else, rewritten whole on every hourly pass; doc 05 classes an error here
+    as benign, "a stale value is displayed".
 
-    ``GET /v1/linbo/hosts/image-status`` answers
-    ``{"hosts": {hostname: {lastSync, action, image, imageVersion}}, "total": n}``
-    -- keyed by hostname, and **carrying no MAC**. That is the one thing Q-03
-    asked the API for and the one thing it does not yet give.
-
-    Raising here is the whole point. Filing by hostname instead would break
-    doc 03's rule; returning an empty index would be worse still, because
-    ``_write_status`` reads "no row" as "machine unreachable" and would post a
-    false alarm on every PXE machine in the estate, silently, on every sweep.
+    What that costs is one narrow case: a hostname reassigned to a different
+    machine between two nightly inventories, which would show the newcomer's
+    state on the old row until the next inventory puts it right. The other
+    case -- a machine renamed and not yet re-inventoried -- resolves to no
+    match at all, which doc 05 already describes as the expected freshness
+    gap after a rename.
     """
     hosts = response.get("hosts")
     if not isinstance(hosts, dict):
         raise LinboPayloadError(f"expected a 'hosts' object, got {list(response)}")
-
-    by_mac = {}
-    for hostname, entry in hosts.items():
-        mac = (entry.get("mac") or "").lower()
-        if not mac:
-            raise LinboPayloadError(
-                f"{hostname}: the LINBO response carries no MAC, so nothing can "
-                "be filed under one (specs/07, Q-03)"
-            )
-        by_mac[mac] = entry
-    return by_mac
+    return {str(hostname).strip().lower(): entry for hostname, entry in hosts.items()}
 
 
 def _parse_last_sync(value):
-    """``"2026-08-07T14:40:00.000Z"`` -- a string, and an aware one.
+    """A string, and an aware one -- in either serialisation lmn may send.
+
+    ``"2026-08-07T12:40:00+00:00"`` from a current server, or
+    ``"2026-08-07T14:40:00.000Z"`` from an older one. Both are read, so the
+    application does not depend on which version an instance runs.
 
     A machine whose timestamp is unreadable is still a machine that answered:
     losing the date is right, losing the row is not (same rule as a malformed
@@ -81,23 +88,41 @@ def _parse_last_sync(value):
         return None
 
 
-def _write_status(by_mac: dict, *, macs=None) -> int:
+def _write_status(by_hostname: dict) -> int:
     now = timezone.now()
     # Only machines that actually boot over PXE have a LINBO state to miss.
     # Read from the flag and never inferred from the role: on real estate data
     # the two disagree (see Device.expects_linbo). Sweeping everything would
-    # mark every printer, router, NAS and server permanently "unreachable" --
-    # a whole estate of false alarms, which is exactly what doc 05 forbids.
+    # file an absence of data on every printer, router, NAS and server -- a
+    # whole estate of them, which is exactly what doc 05 forbids.
     queryset = Device.objects.filter(is_active=True, pxe__gt=0)
-    if macs is not None:
-        queryset = queryset.filter(mac__in=macs)
+
+    # A hostname is not unique in this table, and an ambiguous one is not
+    # guessed: two machines answering to the same name means we cannot say
+    # which the log belongs to, so neither gets it. Rare, and cheap to check.
+    # Counted on the normalised name, the same one the lookup uses: "Client1"
+    # and "client1" are one name to lmn and must be one name here too.
+    ambiguous = {
+        name
+        for name, count in collections.Counter(
+            h.strip().lower()
+            for h in Device.objects.filter(is_active=True, pxe__gt=0).values_list(
+                "hostname", flat=True
+            )
+        ).items()
+        if count > 1
+    }
+    if ambiguous:
+        logger.warning("hostname is not unique, so not filed: %s", sorted(ambiguous))
 
     written = 0
     for device in queryset.iterator():
-        row = by_mac.get(device.mac.lower())
+        name = device.hostname.strip().lower()
+        row = None if name in ambiguous else by_hostname.get(name)
         status, _created = DeviceStatus.objects.get_or_create(device=device)
         if row is None:
-            status.fetch_status = DeviceStatus.FetchStatus.UNREACHABLE
+            # The server held nothing under this name. That is all it means.
+            status.fetch_status = DeviceStatus.FetchStatus.NO_DATA
         else:
             status.fetch_status = DeviceStatus.FetchStatus.OK
             status.last_linbo_sync_at = _parse_last_sync(row.get("lastSync"))
@@ -111,7 +136,7 @@ def _write_status(by_mac: dict, *, macs=None) -> int:
 
 
 def sweep_linbo() -> dict:
-    """One collective call for the whole estate, then filing by MAC."""
+    """One collective call for the whole estate, then filing by hostname."""
     client = Client()
     try:
         response = client.linbo_status_all()
@@ -122,20 +147,103 @@ def sweep_linbo() -> dict:
         DeviceStatus.objects.update(fetch_status=DeviceStatus.FetchStatus.FORBIDDEN)
         raise
 
-    return {"devices": _write_status(_index_by_mac(response))}
+    return {"devices": _write_status(_index_by_hostname(response))}
+
+
+def refresh_device(device, *, probe: bool = False) -> str:
+    """One machine, addressed by name, filed under its MAC.
+
+    Doc 05's rule verbatim -- "on adresse l'API par ce que lmn sait nommer, on
+    écrit en base par la MAC" -- and the first place it can be honoured, since
+    this response carries the MAC and the collective one does not.
+
+    So the name is treated as an address and nothing more. If the machine that
+    answers is not the machine we asked about, its state is **not** written:
+    that is the reassigned-hostname case, and filing it would put one
+    machine's repair history on another.
+
+    Returns the outcome as a short string, for the counters the heartbeat keeps.
+    """
+    payload = Client().linbo_status_host(
+        device.hostname, school=settings.ST_DEFAULT_SCHOOL_SLUG, probe=probe
+    )
+
+    answered = Device.normalize_mac(payload.get("mac") or "")
+    status, _created = DeviceStatus.objects.get_or_create(device=device)
+    status.observed_at = timezone.now()
+    status.refresh_requested_at = None
+
+    if answered and answered != device.mac:
+        logger.warning(
+            "%s now answers for %s, not %s: state not filed",
+            device.hostname, answered, device.mac,
+        )
+        status.fetch_status = DeviceStatus.FetchStatus.NO_DATA
+        status.save()
+        return "reassigned"
+
+    # One entry per image of the group; the applied ones carry a date. The most
+    # recent of those is what "last synchronised" means for the machine as a
+    # whole -- the rest stays in `raw`, where a per-image screen can find it.
+    applied = [
+        (_parse_last_sync(image.get("lastSync")), image)
+        for image in payload.get("images") or []
+        if image.get("lastSync")
+    ]
+    applied = [(when, image) for when, image in applied if when is not None]
+
+    status.raw = payload
+    if applied:
+        when, image = max(applied, key=lambda pair: pair[0])
+        status.fetch_status = DeviceStatus.FetchStatus.OK
+        status.last_linbo_sync_at = when
+        status.linbo_image = image.get("image") or ""
+        outcome = "ok"
+    else:
+        # The group's images are known and none has ever been applied here.
+        # Still an absence of information about a synchronisation, not a fault.
+        status.fetch_status = DeviceStatus.FetchStatus.NO_DATA
+        status.last_linbo_sync_at = None
+        status.linbo_image = ""
+        outcome = "never_applied"
+
+    status.save()
+    return outcome
 
 
 def drain_refresh_queue() -> dict:
-    """The queue is only a trigger, not a variant.
+    """The queue is a trigger, and now one call per machine rather than a sweep.
 
-    No outgoing addressing key: we repeat the same collective call as
-    ``sweep_linbo``, which removes the whole class of bugs tied to stale names.
+    Somebody pressed a button on a machine and is watching that machine: the
+    per-host endpoint answers about it alone, carries its MAC, and costs lmn
+    one read instead of the whole estate's. ``probe`` stays off -- contacting
+    the machine is a separate, explicit act, not a side effect of a button
+    that asks what the logs say.
     """
-    pending = DeviceStatus.objects.filter(refresh_requested_at__isnull=False)
-    if not pending.exists():
+    pending = list(
+        DeviceStatus.objects.filter(refresh_requested_at__isnull=False).select_related(
+            "device"
+        )
+    )
+    if not pending:
         return {}
-    logger.info("refresh requested on %d device(s)", pending.count())
-    return sweep_linbo()
+
+    logger.info("refresh requested on %d device(s)", len(pending))
+    outcomes: dict = {}
+    for status in pending:
+        try:
+            outcome = refresh_device(status.device)
+        except Forbidden:
+            DeviceStatus.objects.update(fetch_status=DeviceStatus.FetchStatus.FORBIDDEN)
+            raise
+        except LmnApiError as exc:
+            # One machine's failure must not strand the rest of the queue: the
+            # request is cleared either way, or the button stays stuck for good.
+            logger.warning("refresh failed for %s: %s", status.device.hostname, exc)
+            DeviceStatus.objects.filter(pk=status.pk).update(refresh_requested_at=None)
+            outcome = "failed"
+        outcomes[outcome] = outcomes.get(outcome, 0) + 1
+    return outcomes
 
 
 def sync_inventory() -> dict:

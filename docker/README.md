@@ -129,5 +129,8 @@ migration happens. The worker waits for the schema before it starts.
 - **No TLS**, on purpose: see above.
 - **No OIDC yet.** Accounts sign in with a local password (D-26), which is a
   stopgap. Keycloak is not wired up in either channel.
-- **No lmnapi calls yet.** `sync_parc --from-file` imports a sophomorix
-  `devices.csv`; the API adapter waits on Q-03.
+- **lmnapi is wired, but nothing shows it.** The worker syncs the estate and
+  sweeps LINBO once `ST_LMNAPI_BASE_URL` and `ST_LMNAPI_HOST_KEY` are set;
+  `sync_parc --from-file` still imports a sophomorix `devices.csv` for an
+  instance out of reach of the server. What it collects is visible in
+  `/admin` only.

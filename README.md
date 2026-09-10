@@ -7,8 +7,8 @@ standing up in a classroom.
 
 **Status: first draft. Not ready for production.** The foundation, the estate
 reconciliation and every screen -- tickets read and written, profiles, badges,
-notifications -- are in place and tested. OIDC and the lmnapi endpoints are
-not. See "Not done yet".
+notifications -- are in place and tested, and the lmnapi adapters are written
+against a live server. OIDC is not. See "Not done yet".
 
 It is also still being developed too actively to be deployed to anyone: the
 data model and its migrations change from one week to the next, and no upgrade
@@ -150,12 +150,14 @@ artefact, which is why the paths resolve to nothing in a fresh clone.
 
 ## 🚧 Not done yet
 
-Three of these wait on the same thing and are meant to be done in one pass, the
-day there are credentials for Keycloak and for lmnapi: the OIDC backend, the
-lmnapi adapter, and the account cleanup that D-31 makes urgent. None of them can
-be written honestly before somebody has read a real response from either system
--- which is the whole lesson of `rows_from_api` standing there raising
-`NotImplementedError` rather than guessing.
+Two of these wait on Keycloak credentials and are meant to be done in one pass:
+the OIDC backend, and the account cleanup that D-31 makes urgent. Neither can
+be written honestly before somebody has read a real response from that system
+-- which is the lesson `rows_from_api` taught: it stood raising
+`NotImplementedError` rather than guessing, and the day a real lmnapi answer
+was finally read, the response turned out to re-export `devices.csv`
+uncleaned, comment lines and all. A guessed adapter would have created a room
+called `#server`.
 
 - **OIDC.** A local password login stands in for it (D-26), and
   `bind_oidc_sub()` is written; the Keycloak backend is not (D-05). What it
@@ -169,12 +171,13 @@ be written honestly before somebody has read a real response from either system
   is the reason deactivating somebody keeps meaning something. Everyone else
   lands on the ticket list they can already read, with the `+` in the corner,
   which is why there is no landing page to build.
-- **The lmnapi adapter.** The reconciliation engine is written and tested, and
-  `sync_parc --from-file` exercises it end to end; only
-  `parc/sources.py:rows_from_api` is unwritten -- it stands there and raises
-  `NotImplementedError`, because the shape of the JSON response has not been
-  read yet and guessing it would produce an adapter that looks finished and
-  reconciles nothing (Q-03).
+- **The estate screens.** The adapters are done: `parc/sources.py:rows_from_api`
+  is written against a live linuxmuster 7.4.11, and a sample of each response
+  is kept in `parc/testdata/` -- one test asserts that a `devices.csv` and the
+  API describe the same estate, machine by machine. What is missing is the
+  place a person looks at it: the LINBO state of a machine, its last
+  synchronisation and the age of that observation are read from `/admin` and
+  nowhere else, so nobody standing in a corridor can see them.
 - **A holiday calendar.** The worker will notify -- and sweep the estate --
   during the school holidays. Noise, not damage; the same data answers both
   (D-20, D-28).

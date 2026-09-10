@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: school-tickets\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-31 19:03+0200\n"
+"POT-Creation-Date: 2026-09-10 21:34+0200\n"
 "PO-Revision-Date: 2026-08-25 13:00+0200\n"
 "Last-Translator: \n"
 "Language-Team: English\n"
@@ -592,47 +592,47 @@ msgstr ""
 msgid "Observed"
 msgstr ""
 
-#: parc/models.py:133
-msgid "Unreachable"
+#: parc/models.py:141
+msgid "No information"
 msgstr ""
 
-#: parc/models.py:134
+#: parc/models.py:142
 msgid "Forbidden"
 msgstr ""
 
-#: parc/models.py:155
+#: parc/models.py:163
 msgid "Succeeded"
 msgstr ""
 
-#: parc/models.py:156
+#: parc/models.py:164
 msgid "Failed"
 msgstr ""
 
-#: parc/models.py:157
+#: parc/models.py:165
 msgid "Refused by the volume guard"
 msgstr ""
 
-#: parc/models.py:179
+#: parc/models.py:187
 msgid "Room disappeared"
 msgstr ""
 
-#: parc/models.py:180
+#: parc/models.py:188
 msgid "Suspected room rename"
 msgstr ""
 
-#: parc/models.py:181
+#: parc/models.py:189
 msgid "Device disappeared"
 msgstr ""
 
-#: parc/models.py:184
+#: parc/models.py:192
 msgid "Pending"
 msgstr ""
 
-#: parc/models.py:185
+#: parc/models.py:193
 msgid "Applied"
 msgstr ""
 
-#: parc/models.py:186
+#: parc/models.py:194
 msgid "Dismissed"
 msgstr ""
 

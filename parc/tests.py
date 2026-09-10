@@ -9,6 +9,7 @@ that disagree with the PXE flag. Every one of those broke something.
 
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 from django.db import IntegrityError
 from django.test import TestCase, SimpleTestCase, override_settings
@@ -19,6 +20,7 @@ from accounts.authz import Role
 from accounts.models import AuditLog, User
 from parc import sources, tasks
 from parc.inventory import apply_inventory
+from parc.lmnapi import Client, LmnApiError
 from parc.models import (
     Device,
     DeviceStatus,
@@ -482,7 +484,7 @@ class LinboSweepTests(TestCase):
     def test_only_pxe_machines_are_swept(self):
         """31 of the sample's 45 rows are printers, routers, NAS and servers.
 
-        Sweeping them would file a permanent ``unreachable`` on each -- an
+        Sweeping them would file a permanent ``no_data`` on each -- an
         estate of false alarms on a screen a pupil is meant to trust.
         """
         written = tasks._write_status({})
@@ -494,8 +496,7 @@ class LinboSweepTests(TestCase):
         device = Device.objects.filter(pxe__gt=0).first()
         tasks._write_status(
             {
-                device.mac: {
-                    "mac": device.mac,
+                device.hostname.lower(): {
                     "lastSync": "2026-08-07T14:40:00.000Z",
                     "action": "applied",
                     "image": "data-jammy.qcow2",
@@ -512,35 +513,165 @@ class LinboSweepTests(TestCase):
 
     def test_an_unreadable_timestamp_costs_the_date_not_the_machine(self):
         device = Device.objects.filter(pxe__gt=0).first()
-        tasks._write_status({device.mac: {"mac": device.mac, "lastSync": "never"}})
+        tasks._write_status({device.hostname.lower(): {"lastSync": "never"}})
         status = DeviceStatus.objects.get(device=device)
         self.assertEqual(status.fetch_status, DeviceStatus.FetchStatus.OK)
         self.assertIsNone(status.last_linbo_sync_at)
 
-    def test_a_response_without_macs_is_refused_rather_than_filed(self):
-        """The estate-wide false alarm doc 05 forbids, caught at the door.
+    def test_an_absent_machine_is_missing_data_not_a_fault(self):
+        """Doc 05's rule, in the one place it can be broken.
 
-        lmn 7.4.11 keys ``image-status`` by hostname and carries no MAC. An
-        empty index would sail straight through ``_write_status`` and mark
-        every PXE machine unreachable, quietly, on every sweep.
+        The server holds nothing under this name -- never booted, renamed, log
+        purged, all indistinguishable from here. Saying "unreachable" would
+        report a fault nobody observed, and "never synchronised" would state a
+        conclusion the server cannot support.
         """
-        response = {
-            "hosts": {
-                "client1": {
-                    "lastSync": "2026-08-07T14:40:00.000Z",
-                    "action": "applied",
-                    "image": "data-jammy.qcow2",
-                    "imageVersion": None,
-                }
-            },
-            "total": 1,
-        }
-        with self.assertRaises(tasks.LinboPayloadError):
-            tasks._index_by_mac(response)
+        tasks._write_status({})
+        statuses = DeviceStatus.objects.values_list("fetch_status", flat=True)
+        self.assertEqual(set(statuses), {DeviceStatus.FetchStatus.NO_DATA})
 
-    def test_a_response_carrying_macs_is_filed_under_them(self):
-        """What the sweep will do once lmnapi answers with a MAC (Q-03)."""
-        by_mac = tasks._index_by_mac(
-            {"hosts": {"client1": {"mac": "AA:BB:CC:DD:EE:01", "image": "win11.qcow2"}}}
+    def test_a_response_is_filed_by_hostname(self):
+        device = Device.objects.filter(pxe__gt=0).first()
+        written = tasks._write_status(
+            tasks._index_by_hostname(
+                {
+                    "hosts": {
+                        device.hostname.upper(): {
+                            "lastSync": "2026-08-07T14:40:00.000Z",
+                            "action": "applied",
+                            "image": "win11.qcow2",
+                            "imageVersion": None,
+                        }
+                    },
+                    "total": 1,
+                }
+            )
         )
-        self.assertEqual(list(by_mac), ["aa:bb:cc:dd:ee:01"])
+        self.assertEqual(written, 14)
+        status = DeviceStatus.objects.get(device=device)
+        self.assertEqual(status.fetch_status, DeviceStatus.FetchStatus.OK)
+        self.assertEqual(status.linbo_image, "win11.qcow2")
+
+    def test_an_ambiguous_hostname_is_filed_on_neither_machine(self):
+        """Two machines under one name: the log belongs to one, unknowably.
+
+        Guessing would put a repair history on the wrong device. Both are left
+        as missing data instead, and the collision is logged.
+        """
+        first, second = Device.objects.filter(pxe__gt=0)[:2]
+        second.hostname = first.hostname
+        second.save()
+
+        tasks._write_status(
+            tasks._index_by_hostname(
+                {"hosts": {first.hostname: {"image": "win11.qcow2"}}, "total": 1}
+            )
+        )
+        for device in (first, second):
+            status = DeviceStatus.objects.get(device=device)
+            self.assertEqual(status.fetch_status, DeviceStatus.FetchStatus.NO_DATA)
+
+    def test_a_payload_without_hosts_is_refused(self):
+        with self.assertRaises(tasks.LinboPayloadError):
+            tasks._index_by_hostname({"devices": []})
+
+
+class HostStatusTests(TestCase):
+    """The per-host endpoint: addressed by name, filed under the MAC.
+
+    Shapes come from ``GET /v1/linbo/hosts/{hostname}/status`` on a live
+    lmn 7.4.11 -- one entry per image of the host's ``start.conf`` group, each
+    carrying the date it was last applied or ``null`` if it never was.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        apply_inventory(parse_sample().rows, source="csv_upload")
+
+    def setUp(self):
+        self.device = Device.objects.filter(pxe__gt=0).first()
+
+    def _payload(self, *, mac=None, images=None):
+        return {
+            "hostname": self.device.hostname,
+            "school": "default-school",
+            "mac": mac if mac is not None else self.device.mac.upper(),
+            "ip": "10.0.0.100",
+            "pxeEnabled": True,
+            "online": None,
+            "osState": None,
+            "images": images
+            if images is not None
+            else [
+                {"image": "jammy.qcow2", "name": "Ubuntu Mate", "partition": 2, "lastSync": None},
+                {
+                    "image": "data-jammy.qcow2",
+                    "name": "Data",
+                    "partition": 3,
+                    "lastSync": "2026-08-07T12:40:00+00:00",
+                },
+            ],
+        }
+
+    def _refresh(self, payload):
+        with patch.object(Client, "linbo_status_host", return_value=payload):
+            return tasks.refresh_device(self.device)
+
+    def test_the_most_recently_applied_image_is_the_machine_s_state(self):
+        """Two images in the group, one never applied: the dated one wins."""
+        self.assertEqual(self._refresh(self._payload()), "ok")
+        status = DeviceStatus.objects.get(device=self.device)
+        self.assertEqual(status.fetch_status, DeviceStatus.FetchStatus.OK)
+        self.assertEqual(status.linbo_image, "data-jammy.qcow2")
+        self.assertEqual(status.last_linbo_sync_at.year, 2026)
+        # The whole answer is kept: a per-image screen needs the undated ones.
+        self.assertEqual(len(status.raw["images"]), 2)
+
+    def test_a_reassigned_hostname_files_nothing(self):
+        """Doc 05's reason for wanting the MAC in the response, exercised.
+
+        The name still resolves, but it now belongs to another machine. Writing
+        its state here would put one machine's history on another -- so the
+        answer is refused, and that is the point of the whole rule.
+        """
+        outcome = self._refresh(self._payload(mac="aa:bb:cc:dd:ee:99"))
+        self.assertEqual(outcome, "reassigned")
+        status = DeviceStatus.objects.get(device=self.device)
+        self.assertEqual(status.fetch_status, DeviceStatus.FetchStatus.NO_DATA)
+        self.assertEqual(status.linbo_image, "")
+        self.assertIsNone(status.last_linbo_sync_at)
+
+    def test_a_machine_that_never_applied_an_image_is_not_a_fault(self):
+        """The group's images are known; none has ever landed on this host."""
+        images = [{"image": "jammy.qcow2", "name": "Ubuntu Mate", "lastSync": None}]
+        self.assertEqual(self._refresh(self._payload(images=images)), "never_applied")
+        status = DeviceStatus.objects.get(device=self.device)
+        self.assertEqual(status.fetch_status, DeviceStatus.FetchStatus.NO_DATA)
+
+    def test_mac_case_does_not_decide_identity(self):
+        """The API answers upper-case; ``Device.mac`` is always lower."""
+        self.assertEqual(self._refresh(self._payload(mac=self.device.mac.upper())), "ok")
+
+    def test_the_queue_is_drained_one_machine_at_a_time(self):
+        """The button clears even when a machine's own call fails.
+
+        A request left in place is a button that stays stuck: the next pass
+        would retry the same failure for ever, and the person watching would
+        never be told anything.
+        """
+        first, second = Device.objects.filter(pxe__gt=0)[:2]
+        for device in (first, second):
+            DeviceStatus.objects.create(device=device, refresh_requested_at=timezone.now())
+
+        def answer(hostname, **kwargs):
+            if hostname == first.hostname:
+                raise LmnApiError("boom")
+            return {"mac": second.mac, "images": []}
+
+        with patch.object(Client, "linbo_status_host", side_effect=answer):
+            outcomes = tasks.drain_refresh_queue()
+
+        self.assertEqual(outcomes, {"failed": 1, "never_applied": 1})
+        self.assertFalse(
+            DeviceStatus.objects.filter(refresh_requested_at__isnull=False).exists()
+        )
