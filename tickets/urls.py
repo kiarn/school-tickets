@@ -13,6 +13,7 @@ urlpatterns = [
     path("t/<int:pk>/comment/", views.comment_create, name="comment"),
     path("t/<int:pk>/status/", views.ticket_status, name="status"),
     path("t/<int:pk>/claim/", views.ticket_claim, name="claim"),
+    path("t/<int:pk>/device/refresh/", views.device_refresh, name="device_refresh"),
     path("t/<int:pk>/assignees/", views.ticket_assignees, name="assignees"),
     path("t/<int:pk>/tags/", views.ticket_tags, name="tags"),
     path("t/<int:pk>/resolution/", views.ticket_resolution, name="resolution"),

@@ -193,6 +193,19 @@ ST_SYNC_MAX_REMOVAL_RATIO = float(os.environ.get("ST_SYNC_MAX_REMOVAL_RATIO", "0
 # MAC overlap ratio above which a room rename is proposed.
 ST_ROOM_RENAME_THRESHOLD = float(os.environ.get("ST_ROOM_RENAME_THRESHOLD", "0.60"))
 
+# --- What counts as "behind" for a LINBO sync --------------------------------
+# Configurable and never hard-coded (doc 05): a school that re-images every
+# night and one that re-images once a term do not mean the same thing by it.
+# Fourteen days is a default, not a rule -- long enough that an ordinary week
+# of holidays does not colour the whole estate.
+ST_LINBO_STALE_AFTER = int(os.environ.get("ST_LINBO_STALE_AFTER", 14 * 86400))
+# Past this, we stop presenting the value as current and say instead how long
+# the information has been unavailable. The sweep runs hourly, so six hours
+# means several passes have been missed -- the worker is down, or lmnapi is.
+# The distinction matters: a stopped worker looks exactly like a broken estate
+# unless the screen says which it is.
+ST_LINBO_OBSERVATION_MAX_AGE = int(os.environ.get("ST_LINBO_OBSERVATION_MAX_AGE", 6 * 3600))
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,

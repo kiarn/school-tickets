@@ -198,9 +198,73 @@
                 {{ ticket.device.hostname }}
                 <span class="font-mono text-xs">{{ ticket.device.mac }}</span>
             </div>
-            {% comment %} The LINBO block belongs here (doc 05: "fiche machine, bloc d'état,
-               avec les deux âges"). It waits on the endpoint semantics, and an
-               age shown without the age of the observation would lie. {% endcomment %}
+            {% comment %} The LINBO block doc 05 asks for. Its rule is the whole
+               point and it is not a layout rule: **never a freshness without the
+               age of the observation**. A pupil reading "last synced six weeks
+               ago" concludes the machine is at fault; the same line, with
+               "checked 40 minutes ago" beside it, says something true. Without
+               the second, it may be the worker that stopped on Tuesday.
+
+               Nothing is drawn at all when there is nothing to say -- no PXE, no
+               row yet, no machine. An empty panel reads as a problem, and doc 05
+               forbids showing a fault where there is only absent data.
+               {% endcomment %}
+            {% if show_linbo %}
+                <div class="mt-1 text-sm opacity-70">
+                    {% if linbo.is_readable %}
+                        <span class="font-medium">{% translate "Last synchronised" %}:</span>
+                        {% blocktranslate with age=linbo.last_linbo_sync_at|timesince %}{{ age }} ago{% endblocktranslate %}
+                        {% if linbo.sync_is_late %}
+                            {% comment %} Discreet on purpose (doc 05): an application
+                               that cries wolf stops being read. A word, not a colour
+                               that shouts. {% endcomment %}
+                            <span class="badge badge-sm badge-ghost">{% translate "behind" %}</span>
+                        {% endif %}
+                        {% if linbo.linbo_image %}
+                            <span class="font-mono text-xs">{{ linbo.linbo_image }}</span>
+                        {% endif %}
+                        <span class="block text-xs opacity-60">
+                            {% blocktranslate with age=linbo.observed_at|timesince %}checked {{ age }} ago{% endblocktranslate %}
+                        </span>
+                    {% elif linbo.observation_is_stale %}
+                        {% comment %} The value is not shown at all, rather than shown
+                           as if current: this says something about us, not about the
+                           machine. {% endcomment %}
+                        <span class="text-xs opacity-60">
+                            {% if linbo.observed_at %}
+                                {% blocktranslate with age=linbo.observed_at|timesince %}No news of this machine for {{ age }}{% endblocktranslate %}
+                            {% else %}
+                                {% translate "This machine has never been checked" %}
+                            {% endif %}
+                        </span>
+                    {% elif linbo %}
+                        <span class="text-xs opacity-60">
+                            {% translate "No synchronisation information for this machine" %}
+                        </span>
+                    {% else %}
+                        <span class="text-xs opacity-60">
+                            {% translate "This machine has never been checked" %}
+                        </span>
+                    {% endif %}
+
+                    {% comment %} Asking again is a request to lmnapi, so it happens
+                       when somebody wants it and never because a page was drawn
+                       (D-09: the web service calls nothing itself -- it writes a
+                       request the worker picks up). Offered only to whoever
+                       repairs: this value is what one decides on, and reporting a
+                       fault does not need it. {% endcomment %}
+                    {% if can_work %}
+                        {% if linbo.refresh_is_pending %}
+                            <span class="block text-xs opacity-60">{% translate "Fresh reading requested" %}</span>
+                        {% else %}
+                            <form method="post" action="{% url 'tickets:device_refresh' ticket.pk %}" class="mt-1">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-ghost btn-xs">{% translate "Check again" %}</button>
+                            </form>
+                        {% endif %}
+                    {% endif %}
+                </div>
+            {% endif %}
         {% endif %}
 
         {% comment %} A tag is a conclusion, and it is drawn where the conclusion is

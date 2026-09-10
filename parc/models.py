@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Local reflection of the estate (D-08). See specs/03-parc-synchronisation.md."""
 
+from django.conf import settings
 from django.db import models
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 
@@ -156,6 +158,73 @@ class DeviceStatus(models.Model):
 
     class Meta:
         indexes = [models.Index(fields=["refresh_requested_at"])]
+
+    # --- What a screen may say about this row --------------------------------
+    # Read here rather than in a template, because the rule doc 05 lays down is
+    # a rule about truth, not about layout: **never show freshness without the
+    # age of the observation**. A template that forgets one of the two produces
+    # a lying display, and a template cannot be tested for that.
+
+    @property
+    def observation_is_stale(self) -> bool:
+        """Whether the value is too old to be presented as current.
+
+        Past this, the honest sentence is "no information for X" rather than
+        "last synced X ago": a pupil reading the second concludes the machine
+        is broken, when it is the worker that stopped on Tuesday.
+        """
+        if self.observed_at is None:
+            return True
+        age = (timezone.now() - self.observed_at).total_seconds()
+        return age > settings.ST_LINBO_OBSERVATION_MAX_AGE
+
+    @property
+    def sync_is_late(self) -> bool:
+        """Whether the machine itself is behind -- a fact about the estate.
+
+        Distinct from the above, which is a fact about *us*. Both can be true
+        at once, and conflating them is how a screen blames the wrong thing.
+        """
+        if self.last_linbo_sync_at is None or self.observation_is_stale:
+            return False
+        age = (timezone.now() - self.last_linbo_sync_at).total_seconds()
+        return age > settings.ST_LINBO_STALE_AFTER
+
+    @classmethod
+    def request_refresh(cls, device) -> "DeviceStatus | None":
+        """Ask the worker for a fresh reading of one machine.
+
+        The web service holds no lmnapi secret and calls nothing itself (D-09),
+        so this writes a request and returns. The worker notices within its
+        refresh cadence and makes the one call.
+
+        Creates the row when there is none: a machine the sweep has never
+        reached is exactly the one somebody wants to ask about, and having no
+        row is not a reason to refuse. Idempotent -- pressing twice does not
+        queue twice, because the queue is a flag and not a list.
+        """
+        if not device.expects_linbo:
+            # Nothing to ask: a machine that does not boot over PXE has no
+            # LINBO state, so a request would return an absence for ever.
+            return None
+        status, _created = cls.objects.get_or_create(device=device)
+        if status.refresh_requested_at is None:
+            status.refresh_requested_at = timezone.now()
+            status.save(update_fields=["refresh_requested_at"])
+        return status
+
+    @property
+    def refresh_is_pending(self) -> bool:
+        return self.refresh_requested_at is not None
+
+    @property
+    def is_readable(self) -> bool:
+        """Whether there is a synchronisation date worth drawing at all."""
+        return (
+            self.fetch_status == self.FetchStatus.OK
+            and self.last_linbo_sync_at is not None
+            and not self.observation_is_stale
+        )
 
 
 class SyncRun(models.Model):

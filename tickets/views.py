@@ -45,7 +45,7 @@ from accounts.authz import (
 )
 from accounts.models import AuditLog, User
 from notifications import events
-from parc.models import Device, Room
+from parc.models import Device, DeviceStatus, Room
 
 from . import attachments as photos
 from .forms import CommentForm, TicketCorrectionForm, TicketForm, VisibilityForm
@@ -183,15 +183,39 @@ def ticket_list(request):
     )
 
 
+def _linbo_status(device):
+    """The LINBO row to draw for a device, or ``None`` to draw nothing.
+
+    ``None`` for three different situations, and that is deliberate: a device
+    that does not boot over PXE has no LINBO state to miss (doc 05), one that
+    has never been swept has no row yet, and a machine-less ticket has no
+    device at all. None of the three is a fault, so none of them earns a block
+    on screen -- an empty panel reads as a problem.
+    """
+    if device is None or not device.expects_linbo:
+        return None
+    return getattr(device, "status", None)
+
+
 @login_required
 def ticket_detail(request, pk):
     ticket = get_object_or_404(
         Ticket.objects.visible_to(request.user).select_related(
-            "room", "device", "resolution_comment", "resolution_comment__author"
+            "room",
+            "device",
+            "device__status",
+            "resolution_comment",
+            "resolution_comment__author",
         ),
         pk=pk,
     )
     assignees = list(ticket.assignees.all())
+    # Passed explicitly rather than reached through `ticket.device.status` in
+    # the template: the reverse of a OneToOne raises when there is no row, and
+    # a template swallows that silently -- which is how "no data" and "never
+    # swept" end up looking identical on screen (doc 05).
+    linbo = _linbo_status(ticket.device)
+    linbo_applies = ticket.device is not None and ticket.device.expects_linbo
     # One choice means nothing to choose: the block stays a plain statement of
     # who can read, rather than a form that can only re-submit the status quo.
     choices = visibility_targets(request.user, ticket)
@@ -210,6 +234,12 @@ def ticket_detail(request, pk):
             "attachments": ticket.attachments.filter(comment__isnull=True),
             "assignees": assignees,
             "is_assignee": request.user in assignees,
+            "linbo": linbo,
+            # Drawn when there is something to say, or somebody who can ask.
+            # A PXE machine the sweep has never reached says nothing yet and is
+            # still worth asking about -- but only to whoever may press, since
+            # a block offering nothing and no action is just an empty panel.
+            "show_linbo": bool(linbo_applies and (linbo or can_work_on(request.user))),
             "comment_form": CommentForm(),
             "can_work": can_work_on(request.user),
             "can_reopen": may_correct,
@@ -351,6 +381,28 @@ def ticket_status(request, pk):
         # bookkeeping and notifies nobody (doc 09 §4).
         events.status_changed(ticket, actor=request.user, previous=previous)
     messages.success(request, _("Status updated."))
+    return redirect("tickets:detail", pk=ticket.pk)
+
+
+@require_POST
+@login_required
+def device_refresh(request, pk):
+    """Ask for a fresh LINBO reading of this ticket's machine. On demand only.
+
+    Never automatic. Reading the block costs nothing -- it is a column the
+    worker already filled -- but *asking again* costs lmnapi a call, so it
+    happens when somebody wants it and not when a page is drawn.
+
+    Restricted to those who repair: the freshness of this value is what one
+    decides on. Reporting a fault does not require it, and every press is a
+    call on the school's server.
+    """
+    ticket = _ticket_or_404(request, pk)
+    if not can_work_on(request.user) or ticket.device is None:
+        raise Http404
+    if DeviceStatus.request_refresh(ticket.device) is None:
+        raise Http404
+    messages.info(request, _("Asked for a fresh reading of this machine."))
     return redirect("tickets:detail", pk=ticket.pk)
 
 

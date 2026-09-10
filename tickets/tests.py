@@ -8,6 +8,8 @@ and every new view is a chance to forget ``visible_to()``.
 import io
 import shutil
 import tempfile
+from datetime import timedelta
+from unittest.mock import patch
 from pathlib import Path
 
 from django.core.exceptions import SuspiciousFileOperation, ValidationError
@@ -26,7 +28,11 @@ from accounts.authz import (
     visibility_targets,
 )
 from accounts.models import AuditLog, User
-from parc.models import Device, Room
+from django.utils import timezone
+
+from parc import tasks
+from parc.lmnapi import Client
+from parc.models import Device, DeviceStatus, Room
 from tickets import attachments
 from tickets.forms import TicketForm
 from tickets.models import Attachment, Comment, Tag, Ticket, TicketAssignee, TicketTag
@@ -1623,3 +1629,254 @@ class QuickCaptureTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(Ticket.objects.filter(title="Fremd").count(), 0)
+
+
+class LinboBlockTests(TestCase):
+    """Doc 05 on screen: never a freshness without the age of the observation.
+
+    The rule exists because the two ages answer different questions. "Last
+    synced six weeks ago" describes the machine; "checked forty minutes ago"
+    describes us. Showing the first alone lets a pupil conclude a machine is
+    broken when it is the worker that stopped on Tuesday.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.room = Room.objects.create(name="204")
+        cls.pxe = Device.objects.create(
+            room=cls.room, mac="48:5b:39:0b:2e:c2", hostname="dienst05", pxe=1
+        )
+        cls.printer = Device.objects.create(
+            room=cls.room, mac="48:5b:39:0b:2e:c3", hostname="drucker4", pxe=0
+        )
+        cls.user = User.objects.enroll(cn="pupil", role=Role.MEMBER, display_name="Lea")
+
+    def setUp(self):
+        self.client.force_login(self.user)
+
+    def _ticket(self, device):
+        return Ticket.objects.create(
+            room=self.room, device=device, room_label="204",
+            title="Black screen", description="Nothing on boot.",
+            status=Ticket.Status.OPEN, priority=Ticket.Priority.HIGH,
+            visibility=Visibility.TEAM, created_by=self.user,
+        )
+
+    def _get(self, device):
+        return self.client.get(reverse("tickets:detail", args=[self._ticket(device).pk]))
+
+    def test_a_readable_state_shows_both_ages(self):
+        now = timezone.now()
+        DeviceStatus.objects.create(
+            device=self.pxe,
+            fetch_status=DeviceStatus.FetchStatus.OK,
+            last_linbo_sync_at=now - timedelta(days=42),
+            linbo_image="jammy.qcow2",
+            observed_at=now - timedelta(minutes=40),
+        )
+        response = self._get(self.pxe)
+        self.assertContains(response, "Last synchronised")
+        self.assertContains(response, "jammy.qcow2")
+        # The second age is the point of the whole block.
+        self.assertContains(response, "checked")
+
+    def test_a_stale_observation_does_not_present_the_value_as_current(self):
+        """The worker stopped days ago; the machine may be perfectly fine.
+
+        Showing "last synced six weeks ago" here would blame the estate for
+        our own outage. The date is withheld and the outage named instead.
+        """
+        now = timezone.now()
+        DeviceStatus.objects.create(
+            device=self.pxe,
+            fetch_status=DeviceStatus.FetchStatus.OK,
+            last_linbo_sync_at=now - timedelta(days=42),
+            linbo_image="jammy.qcow2",
+            observed_at=now - timedelta(days=3),
+        )
+        response = self._get(self.pxe)
+        self.assertContains(response, "No news of this machine")
+        self.assertNotContains(response, "Last synchronised")
+        self.assertNotContains(response, "jammy.qcow2")
+
+    def test_no_data_is_not_dressed_as_a_fault(self):
+        DeviceStatus.objects.create(
+            device=self.pxe,
+            fetch_status=DeviceStatus.FetchStatus.NO_DATA,
+            observed_at=timezone.now(),
+        )
+        response = self._get(self.pxe)
+        self.assertContains(response, "No synchronisation information")
+        self.assertNotContains(response, "Last synchronised")
+
+    def test_a_machine_that_does_not_boot_over_pxe_gets_no_block(self):
+        """A printer has no LINBO state to miss, so it has nothing to report.
+
+        An empty panel reads as a problem; drawing one here would put a
+        permanent non-answer on every printer, router and NAS in the estate.
+        """
+        response = self._get(self.printer)
+        self.assertContains(response, "drucker4")
+        self.assertNotContains(response, "Last synchronised")
+        self.assertNotContains(response, "No synchronisation information")
+
+    def test_a_never_swept_machine_offers_the_question_to_whoever_repairs(self):
+        """PXE, no row at all -- and precisely the machine worth asking about.
+
+        Having never been reached is not a reason to refuse the request; it is
+        the reason to offer it.
+        """
+        response = self._get(self.pxe)
+        self.assertContains(response, "never been checked")
+        self.assertContains(response, "Check again")
+        self.assertNotContains(response, "Last synchronised")
+
+    def test_lateness_is_a_setting_not_a_number_in_the_code(self):
+        """A school re-imaging every night and one every term disagree."""
+        now = timezone.now()
+        status = DeviceStatus.objects.create(
+            device=self.pxe,
+            fetch_status=DeviceStatus.FetchStatus.OK,
+            last_linbo_sync_at=now - timedelta(days=20),
+            observed_at=now,
+        )
+        with override_settings(ST_LINBO_STALE_AFTER=30 * 86400):
+            self.assertFalse(status.sync_is_late)
+        with override_settings(ST_LINBO_STALE_AFTER=7 * 86400):
+            self.assertTrue(status.sync_is_late)
+
+    def test_a_late_machine_is_never_called_late_on_our_own_outage(self):
+        """`sync_is_late` is a claim about the estate, and it needs evidence.
+
+        With the observation stale we no longer know the machine's state, so
+        asserting it is behind would be inventing a fault out of our silence.
+        """
+        now = timezone.now()
+        status = DeviceStatus.objects.create(
+            device=self.pxe,
+            fetch_status=DeviceStatus.FetchStatus.OK,
+            last_linbo_sync_at=now - timedelta(days=99),
+            observed_at=now - timedelta(days=3),
+        )
+        self.assertTrue(status.observation_is_stale)
+        self.assertFalse(status.sync_is_late)
+
+
+class RefreshRequestTests(TestCase):
+    """Asking again is manual, and it is a request rather than a call.
+
+    D-09 forbids the web service from touching lmnapi, so the page writes
+    ``refresh_requested_at`` and the worker makes the one call. Nothing here
+    is automatic: drawing the block costs a column read, and only a press
+    costs the school's server anything.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.room = Room.objects.create(name="204")
+        cls.pxe = Device.objects.create(
+            room=cls.room, mac="48:5b:39:0b:2e:c2", hostname="dienst05", pxe=1
+        )
+        cls.printer = Device.objects.create(
+            room=cls.room, mac="48:5b:39:0b:2e:c3", hostname="drucker4", pxe=0
+        )
+        cls.member = User.objects.enroll(cn="lea", role=Role.MEMBER, display_name="Lea")
+        cls.reporter = User.objects.enroll(
+            cn="max", role=Role.REPORTER, display_name="Max"
+        )
+
+    def _ticket(self, device, visibility=Visibility.TEAM):
+        return Ticket.objects.create(
+            room=self.room, device=device, room_label="204",
+            title="Black screen", description="Nothing on boot.",
+            status=Ticket.Status.OPEN, priority=Ticket.Priority.NORMAL,
+            visibility=visibility, created_by=self.member,
+        )
+
+    def _press(self, ticket):
+        return self.client.post(reverse("tickets:device_refresh", args=[ticket.pk]))
+
+    def test_a_press_queues_the_machine_and_creates_the_row(self):
+        ticket = self._ticket(self.pxe)
+        self.client.force_login(self.member)
+        self.assertEqual(self._press(ticket).status_code, 302)
+        status = DeviceStatus.objects.get(device=self.pxe)
+        self.assertIsNotNone(status.refresh_requested_at)
+
+    def test_pressing_twice_does_not_queue_twice(self):
+        """The queue is a flag, not a list: a second press changes nothing."""
+        ticket = self._ticket(self.pxe)
+        self.client.force_login(self.member)
+        self._press(ticket)
+        first = DeviceStatus.objects.get(device=self.pxe).refresh_requested_at
+        self._press(ticket)
+        self.assertEqual(
+            DeviceStatus.objects.get(device=self.pxe).refresh_requested_at, first
+        )
+        self.assertEqual(DeviceStatus.objects.count(), 1)
+
+    def test_a_reporter_may_not_ask(self):
+        """Every press is a call on the school's server.
+
+        Reporting a fault does not need the freshness of this value; deciding
+        what to do about it does. Refused as a 404 like every other write this
+        application declines, so the answer never distinguishes "not yours"
+        from "does not exist".
+        """
+        ticket = self._ticket(self.pxe, visibility=Visibility.ALL)
+        self.client.force_login(self.reporter)
+        self.assertEqual(self._press(ticket).status_code, 404)
+        self.assertFalse(DeviceStatus.objects.exists())
+
+    def test_a_reporter_is_not_even_shown_the_button(self):
+        ticket = self._ticket(self.pxe, visibility=Visibility.ALL)
+        self.client.force_login(self.reporter)
+        response = self.client.get(reverse("tickets:detail", args=[ticket.pk]))
+        self.assertNotContains(response, "Check again")
+
+    def test_a_machine_that_never_boots_over_pxe_cannot_be_asked_about(self):
+        """A printer has no LINBO state, so the request would ask for nothing."""
+        ticket = self._ticket(self.printer)
+        self.client.force_login(self.member)
+        self.assertEqual(self._press(ticket).status_code, 404)
+        self.assertFalse(DeviceStatus.objects.exists())
+
+    def test_a_ticket_without_a_machine_cannot_be_asked_about(self):
+        ticket = self._ticket(None)
+        self.client.force_login(self.member)
+        self.assertEqual(self._press(ticket).status_code, 404)
+
+    def test_a_pending_request_replaces_the_button_rather_than_repeating_it(self):
+        ticket = self._ticket(self.pxe)
+        self.client.force_login(self.member)
+        self._press(ticket)
+        response = self.client.get(reverse("tickets:detail", args=[ticket.pk]))
+        self.assertContains(response, "Fresh reading requested")
+        self.assertNotContains(response, "Check again")
+
+    def test_drawing_the_page_never_queues_anything(self):
+        """The whole point: reading is free, asking is deliberate."""
+        ticket = self._ticket(self.pxe)
+        self.client.force_login(self.member)
+        self.client.get(reverse("tickets:detail", args=[ticket.pk]))
+        self.assertFalse(
+            DeviceStatus.objects.filter(refresh_requested_at__isnull=False).exists()
+        )
+
+    def test_the_worker_then_makes_exactly_one_call_for_it(self):
+        """End to end: the press is what the worker acts on, and only that."""
+        ticket = self._ticket(self.pxe)
+        self.client.force_login(self.member)
+        self._press(ticket)
+
+        payload = {"mac": self.pxe.mac, "images": [
+            {"image": "jammy.qcow2", "lastSync": "2026-08-07T12:40:00+00:00"},
+        ]}
+        with patch.object(Client, "linbo_status_host", return_value=payload) as call:
+            outcomes = tasks.drain_refresh_queue()
+
+        self.assertEqual(call.call_count, 1)
+        self.assertEqual(outcomes, {"ok": 1})
+        status = DeviceStatus.objects.get(device=self.pxe)
+        self.assertIsNone(status.refresh_requested_at)
+        self.assertEqual(status.linbo_image, "jammy.qcow2")
